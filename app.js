@@ -734,6 +734,89 @@ class HeartRateMonitor {
         return avgG - 0.3 * avgR - 0.3 * avgB;
     }
     
+    getAlgorithmWeights() {
+        const weights = {};
+        
+        // Initialize default weights
+        const algorithms = ['FFT', 'PeakDetection', 'Autocorrelation', 'Wavelet'];
+        algorithms.forEach(algo => {
+            weights[algo] = 0.25; // Default equal weight
+        });
+        
+        // If we have performance metrics, calculate dynamic weights
+        const allMetrics = [];
+        
+        Object.keys(this.performanceMetrics).forEach(region => {
+            Object.keys(this.performanceMetrics[region]).forEach(algorithm => {
+                const metrics = this.performanceMetrics[region][algorithm];
+                if (metrics.length > 0) {
+                    const recent = metrics.slice(-5); // Last 5 measurements
+                    const avgMetrics = {
+                        variance: recent.reduce((a, m) => a + m.variance, 0) / recent.length,
+                        consensusDeviation: recent.reduce((a, m) => a + m.consensusDeviation, 0) / recent.length,
+                        snr: recent.reduce((a, m) => a + m.snr, 0) / recent.length,
+                        plausibility: recent.reduce((a, m) => a + m.plausibility, 0) / recent.length
+                    };
+                    
+                    // Calculate score (higher is better)
+                    const score = (avgMetrics.snr * 0.3) + 
+                                 (avgMetrics.plausibility * 100 * 0.3) +
+                                 ((1 / (1 + avgMetrics.variance)) * 100 * 0.2) +
+                                 ((1 / (1 + avgMetrics.consensusDeviation)) * 100 * 0.2);
+                    
+                    allMetrics.push({ algorithm, score });
+                }
+            });
+        });
+        
+        // If we have enough data, calculate weights based on performance
+        if (allMetrics.length >= 4) {
+            // Group by algorithm and average scores
+            const algorithmScores = {};
+            algorithms.forEach(algo => {
+                const algoMetrics = allMetrics.filter(m => m.algorithm === algo);
+                if (algoMetrics.length > 0) {
+                    algorithmScores[algo] = algoMetrics.reduce((a, m) => a + m.score, 0) / algoMetrics.length;
+                } else {
+                    algorithmScores[algo] = 50; // Default score
+                }
+            });
+            
+            // Convert scores to weights (normalized to sum to 1)
+            const totalScore = Object.values(algorithmScores).reduce((a, b) => a + b, 0);
+            if (totalScore > 0) {
+                algorithms.forEach(algo => {
+                    weights[algo] = algorithmScores[algo] / totalScore;
+                });
+            }
+        }
+        
+        return weights;
+    }
+    
+    getRegionWeights() {
+        const weights = {
+            forehead: 0.25,
+            leftUnderEye: 0.25,
+            rightUnderEye: 0.25,
+            noseBridge: 0.25
+        };
+        
+        // Adjust weights based on signal quality
+        const qualities = this.regionSignalQuality;
+        const totalQuality = Object.values(qualities).reduce((sum, q) => sum + q.stability, 0);
+        
+        if (totalQuality > 0) {
+            Object.keys(weights).forEach(region => {
+                if (qualities[region]) {
+                    weights[region] = qualities[region].stability / totalQuality;
+                }
+            });
+        }
+        
+        return weights;
+    }
+    
     calculateMultiRegionVitalSigns() {
         // Check if we have enough data in multiple regions
         const validRegions = Object.entries(this.regionBuffers)
@@ -788,9 +871,27 @@ class HeartRateMonitor {
             return { heartRate: 0, breathingRate: 0, confidence: 0 };
         }
         
-        // Calculate consensus using all results
-        const allHeartRates = allResults.map(r => r.heartRate).sort((a, b) => a - b);
-        const medianHR = allHeartRates[Math.floor(allHeartRates.length / 2)];
+        // Get dynamic weights based on performance
+        const algoWeights = this.getAlgorithmWeights();
+        const regionWeights = this.getRegionWeights();
+        
+        // Calculate weighted consensus using both algorithm and region weights
+        let weightedSum = 0;
+        let totalWeight = 0;
+        
+        // Process each result with combined weights
+        allResults.forEach(result => {
+            const algoWeight = algoWeights[result.algorithm] || 0.25;
+            const regionWeight = regionWeights[result.region] || 0.25;
+            const combinedWeight = algoWeight * regionWeight;
+            
+            weightedSum += result.heartRate * combinedWeight;
+            totalWeight += combinedWeight;
+        });
+        
+        // Use weighted average as consensus, fallback to median if needed
+        const medianHR = totalWeight > 0 ? weightedSum / totalWeight : 
+            allResults.map(r => r.heartRate).sort((a, b) => a - b)[Math.floor(allResults.length / 2)];
         
         // Calculate breathing rate (simplified - using FFT only)
         const breathingRate = this.calculateBreathingRate(validRegions[0][1]);
@@ -1588,6 +1689,25 @@ class HeartRateMonitor {
             html += `<li>${region}: <span class="quality-${qualityClass}">${(quality.stability * 100).toFixed(0)}%</span></li>`;
         });
         html += '</ul></div>';
+        
+        // Show current weights being used
+        const algoWeights = this.getAlgorithmWeights();
+        const regionWeights = this.getRegionWeights();
+        
+        html += '<div class="current-weights"><strong>Current Consensus Weights:</strong>';
+        html += '<div style="margin-left: 20px; font-size: 12px;">';
+        html += '<div>Algorithm Weights: ';
+        Object.entries(algoWeights).forEach(([algo, weight]) => {
+            html += `${algo}: ${(weight * 100).toFixed(0)}% `;
+        });
+        html += '</div>';
+        html += '<div>Region Weights: ';
+        Object.entries(regionWeights).forEach(([region, weight]) => {
+            if (weight > 0.05) { // Only show significant weights
+                html += `${region}: ${(weight * 100).toFixed(0)}% `;
+            }
+        });
+        html += '</div></div></div>';
         
         performanceDiv.innerHTML = html;
     }
