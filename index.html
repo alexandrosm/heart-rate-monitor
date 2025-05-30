@@ -334,15 +334,8 @@
                 
                 <div class="controls" style="margin-top: 10px;">
                     <label>
-                        <input type="checkbox" id="showAlgorithmChart"> Show Algorithm Comparison Chart
+                        <input type="checkbox" id="showAlgorithmChart"> Show Algorithm Comparison Charts (All Regions)
                     </label>
-                    <select id="algorithmRegionSelect" style="margin-left: 10px; padding: 6px; display: none;">
-                        <option value="all">All Regions Combined</option>
-                        <option value="forehead">Forehead</option>
-                        <option value="leftUnderEye">Left Under-Eye</option>
-                        <option value="rightUnderEye">Right Under-Eye</option>
-                        <option value="noseBridge">Nose Bridge</option>
-                    </select>
                 </div>
                 
                 <div class="controls" style="margin-top: 10px;">
@@ -402,9 +395,35 @@
                     <canvas id="fullHistoryChart"></canvas>
                 </div>
                 
-                <div class="chart-container" id="algorithmChartContainer" style="margin-top: 20px; height: 300px; display: none;">
-                    <h3 style="text-align: center; margin-bottom: 10px; color: #333;">Algorithm Comparison</h3>
-                    <canvas id="algorithmComparisonChart"></canvas>
+                <div id="algorithmChartsContainer" style="display: none;">
+                    <h3 style="text-align: center; margin: 20px 0 10px; color: #333;">Algorithm Comparison by Region</h3>
+                    
+                    <div class="algorithm-charts-grid">
+                        <div class="chart-container" style="height: 250px;">
+                            <h4 style="text-align: center; margin-bottom: 5px; color: #555;">All Regions Combined</h4>
+                            <canvas id="algorithmChart_all"></canvas>
+                        </div>
+                        
+                        <div class="chart-container" style="height: 250px;">
+                            <h4 style="text-align: center; margin-bottom: 5px; color: #555;">Forehead</h4>
+                            <canvas id="algorithmChart_forehead"></canvas>
+                        </div>
+                        
+                        <div class="chart-container" style="height: 250px;">
+                            <h4 style="text-align: center; margin-bottom: 5px; color: #555;">Left Under-Eye</h4>
+                            <canvas id="algorithmChart_leftUnderEye"></canvas>
+                        </div>
+                        
+                        <div class="chart-container" style="height: 250px;">
+                            <h4 style="text-align: center; margin-bottom: 5px; color: #555;">Right Under-Eye</h4>
+                            <canvas id="algorithmChart_rightUnderEye"></canvas>
+                        </div>
+                        
+                        <div class="chart-container" style="height: 250px;">
+                            <h4 style="text-align: center; margin-bottom: 5px; color: #555;">Nose Bridge</h4>
+                            <canvas id="algorithmChart_noseBridge"></canvas>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

@@ -123,20 +123,10 @@ class HeartRateMonitor {
         
         // Algorithm chart toggle
         this.showAlgorithmChart.addEventListener('change', (e) => {
-            const container = document.getElementById('algorithmChartContainer');
-            const regionSelect = document.getElementById('algorithmRegionSelect');
+            const container = document.getElementById('algorithmChartsContainer');
             container.style.display = e.target.checked ? 'block' : 'none';
-            regionSelect.style.display = e.target.checked ? 'inline-block' : 'none';
-            if (e.target.checked && this.algorithmComparisonChart) {
-                this.updateAlgorithmComparisonChart();
-            }
-        });
-        
-        // Region selector for algorithm chart
-        const regionSelect = document.getElementById('algorithmRegionSelect');
-        regionSelect.addEventListener('change', () => {
-            if (this.showAlgorithmChart.checked) {
-                this.updateAlgorithmComparisonChart();
+            if (e.target.checked && this.algorithmCharts) {
+                this.updateAlgorithmComparisonCharts();
             }
         });
     }
@@ -271,62 +261,68 @@ class HeartRateMonitor {
             }
         });
         
-        // Initialize algorithm comparison chart
-        const algoCtx = document.getElementById('algorithmComparisonChart').getContext('2d');
-        this.algorithmComparisonChart = new Chart(algoCtx, {
-            type: 'line',
-            data: {
-                labels: [],
-                datasets: [
-                    {
-                        label: 'FFT',
-                        data: [],
-                        borderColor: '#e74c3c',
-                        backgroundColor: 'rgba(231, 76, 60, 0.1)',
-                        borderWidth: 2,
-                        tension: 0.1,
-                        pointRadius: 0
+        // Initialize algorithm comparison charts for each region
+        this.algorithmCharts = {};
+        const regions = ['all', 'forehead', 'leftUnderEye', 'rightUnderEye', 'noseBridge'];
+        
+        regions.forEach(region => {
+            const chartElement = document.getElementById(`algorithmChart_${region}`);
+            if (chartElement) {
+                const ctx = chartElement.getContext('2d');
+                this.algorithmCharts[region] = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: [],
+                        datasets: [
+                            {
+                                label: 'FFT',
+                                data: [],
+                                borderColor: '#e74c3c',
+                                backgroundColor: 'rgba(231, 76, 60, 0.1)',
+                                borderWidth: 2,
+                                tension: 0.1,
+                                pointRadius: 0
+                            },
+                            {
+                                label: 'Peak Detection',
+                                data: [],
+                                borderColor: '#3498db',
+                                backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                                borderWidth: 2,
+                                tension: 0.1,
+                                pointRadius: 0
+                            },
+                            {
+                                label: 'Autocorrelation',
+                                data: [],
+                                borderColor: '#2ecc71',
+                                backgroundColor: 'rgba(46, 204, 113, 0.1)',
+                                borderWidth: 2,
+                                tension: 0.1,
+                                pointRadius: 0
+                            },
+                            {
+                                label: 'Wavelet',
+                                data: [],
+                                borderColor: '#f39c12',
+                                backgroundColor: 'rgba(243, 156, 18, 0.1)',
+                                borderWidth: 2,
+                                tension: 0.1,
+                                pointRadius: 0
+                            },
+                            {
+                                label: 'Consensus',
+                                data: [],
+                                borderColor: '#9b59b6',
+                                backgroundColor: 'rgba(155, 89, 182, 0.1)',
+                                borderWidth: 3,
+                                borderDash: [5, 5],
+                                tension: 0.1,
+                                pointRadius: 0
+                            }
+                        ]
                     },
-                    {
-                        label: 'Peak Detection',
-                        data: [],
-                        borderColor: '#3498db',
-                        backgroundColor: 'rgba(52, 152, 219, 0.1)',
-                        borderWidth: 2,
-                        tension: 0.1,
-                        pointRadius: 0
-                    },
-                    {
-                        label: 'Autocorrelation',
-                        data: [],
-                        borderColor: '#2ecc71',
-                        backgroundColor: 'rgba(46, 204, 113, 0.1)',
-                        borderWidth: 2,
-                        tension: 0.1,
-                        pointRadius: 0
-                    },
-                    {
-                        label: 'Wavelet',
-                        data: [],
-                        borderColor: '#f39c12',
-                        backgroundColor: 'rgba(243, 156, 18, 0.1)',
-                        borderWidth: 2,
-                        tension: 0.1,
-                        pointRadius: 0
-                    },
-                    {
-                        label: 'Consensus',
-                        data: [],
-                        borderColor: '#9b59b6',
-                        backgroundColor: 'rgba(155, 89, 182, 0.1)',
-                        borderWidth: 3,
-                        borderDash: [5, 5],
-                        tension: 0.1,
-                        pointRadius: 0
-                    }
-                ]
-            },
-            options: {
+                    options: {
                 responsive: true,
                 maintainAspectRatio: false,
                 interaction: {
@@ -360,6 +356,8 @@ class HeartRateMonitor {
                         intersect: false,
                     }
                 }
+            }
+                });
             }
         });
     }
@@ -810,7 +808,7 @@ class HeartRateMonitor {
             
             // Update algorithm comparison chart if visible
             if (this.showAlgorithmChart.checked) {
-                this.updateAlgorithmComparisonChart();
+                this.updateAlgorithmComparisonCharts();
             }
         }
         
@@ -1311,12 +1309,20 @@ class HeartRateMonitor {
         this.fullHistoryChart.update();
     }
     
-    updateAlgorithmComparisonChart() {
-        if (!this.algorithmComparisonChart) return;
+    updateAlgorithmComparisonCharts() {
+        if (!this.algorithmCharts) return;
         
-        // Get selected region
-        const selectedRegion = document.getElementById('algorithmRegionSelect').value;
-        const regionData = this.algorithmHistory[selectedRegion];
+        // Update each region's chart
+        Object.keys(this.algorithmCharts).forEach(region => {
+            this.updateRegionAlgorithmChart(region);
+        });
+    }
+    
+    updateRegionAlgorithmChart(region) {
+        const chart = this.algorithmCharts[region];
+        if (!chart) return;
+        
+        const regionData = this.algorithmHistory[region];
         if (!regionData) return;
         
         // Get all time points for this region
@@ -1328,15 +1334,7 @@ class HeartRateMonitor {
         
         if (times.length === 0) return;
         
-        // Update chart title
-        const regionLabel = selectedRegion === 'all' ? 'All Regions Combined' : 
-            selectedRegion.replace(/([A-Z])/g, ' $1').trim();
-        this.algorithmComparisonChart.options.plugins.title = {
-            display: true,
-            text: `Algorithm Comparison - ${regionLabel}`
-        };
-        
-        // Prepare data for each algorithm
+        // Algorithm names for indexing
         const algorithmNames = ['FFT', 'PeakDetection', 'Autocorrelation', 'Wavelet'];
         
         algorithmNames.forEach((algoName, index) => {
@@ -1346,12 +1344,12 @@ class HeartRateMonitor {
                 return point ? point.value : null;
             });
             
-            this.algorithmComparisonChart.data.datasets[index].data = data;
+            chart.data.datasets[index].data = data;
         });
         
         // Add consensus line (from full history for "all", or calculate median for specific region)
         let consensusData;
-        if (selectedRegion === 'all') {
+        if (region === 'all') {
             consensusData = times.map(time => {
                 const point = this.fullHistory.find(p => p.time === time);
                 return point ? point.heartRate : null;
@@ -1373,21 +1371,21 @@ class HeartRateMonitor {
                 return null;
             });
         }
-        this.algorithmComparisonChart.data.datasets[4].data = consensusData;
+        chart.data.datasets[4].data = consensusData;
         
         // Update labels
-        this.algorithmComparisonChart.data.labels = times;
+        chart.data.labels = times;
         
         // Update x-axis for longer sessions
         const duration = times[times.length - 1] || 0;
         if (duration > 300) { // More than 5 minutes
-            this.algorithmComparisonChart.options.scales.x.title.text = 'Time (minutes from start)';
-            this.algorithmComparisonChart.data.labels = times.map(t => (t / 60).toFixed(1));
+            chart.options.scales.x.title.text = 'Time (minutes from start)';
+            chart.data.labels = times.map(t => (t / 60).toFixed(1));
         } else {
-            this.algorithmComparisonChart.options.scales.x.title.text = 'Time (seconds from start)';
+            chart.options.scales.x.title.text = 'Time (seconds from start)';
         }
         
-        this.algorithmComparisonChart.update();
+        chart.update();
     }
     
     exportData() {
@@ -1443,13 +1441,15 @@ class HeartRateMonitor {
             this.fullHistoryChart.update();
         }
         
-        // Clear algorithm comparison chart
-        if (this.algorithmComparisonChart) {
-            this.algorithmComparisonChart.data.labels = [];
-            this.algorithmComparisonChart.data.datasets.forEach(dataset => {
-                dataset.data = [];
+        // Clear algorithm comparison charts
+        if (this.algorithmCharts) {
+            Object.values(this.algorithmCharts).forEach(chart => {
+                chart.data.labels = [];
+                chart.data.datasets.forEach(dataset => {
+                    dataset.data = [];
+                });
+                chart.update();
             });
-            this.algorithmComparisonChart.update();
         }
         
         // Clear algorithm history
