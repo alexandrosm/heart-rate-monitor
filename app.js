@@ -25,10 +25,36 @@ class HeartRateMonitor {
         this.breathingRateHistory = [];
         this.fullHistory = [];
         this.algorithmHistory = {
-            FFT: [],
-            PeakDetection: [],
-            Autocorrelation: [],
-            Wavelet: []
+            all: {
+                FFT: [],
+                PeakDetection: [],
+                Autocorrelation: [],
+                Wavelet: []
+            },
+            forehead: {
+                FFT: [],
+                PeakDetection: [],
+                Autocorrelation: [],
+                Wavelet: []
+            },
+            leftUnderEye: {
+                FFT: [],
+                PeakDetection: [],
+                Autocorrelation: [],
+                Wavelet: []
+            },
+            rightUnderEye: {
+                FFT: [],
+                PeakDetection: [],
+                Autocorrelation: [],
+                Wavelet: []
+            },
+            noseBridge: {
+                FFT: [],
+                PeakDetection: [],
+                Autocorrelation: [],
+                Wavelet: []
+            }
         };
         this.chart = null;
         this.fullHistoryChart = null;
@@ -98,8 +124,18 @@ class HeartRateMonitor {
         // Algorithm chart toggle
         this.showAlgorithmChart.addEventListener('change', (e) => {
             const container = document.getElementById('algorithmChartContainer');
+            const regionSelect = document.getElementById('algorithmRegionSelect');
             container.style.display = e.target.checked ? 'block' : 'none';
+            regionSelect.style.display = e.target.checked ? 'inline-block' : 'none';
             if (e.target.checked && this.algorithmComparisonChart) {
+                this.updateAlgorithmComparisonChart();
+            }
+        });
+        
+        // Region selector for algorithm chart
+        const regionSelect = document.getElementById('algorithmRegionSelect');
+        regionSelect.addEventListener('change', () => {
+            if (this.showAlgorithmChart.checked) {
                 this.updateAlgorithmComparisonChart();
             }
         });
@@ -372,8 +408,10 @@ class HeartRateMonitor {
             this.fullHistory = [];
             
             // Reset algorithm history
-            Object.keys(this.algorithmHistory).forEach(key => {
-                this.algorithmHistory[key] = [];
+            Object.keys(this.algorithmHistory).forEach(region => {
+                Object.keys(this.algorithmHistory[region]).forEach(algo => {
+                    this.algorithmHistory[region][algo] = [];
+                });
             });
             
             // Start processing frames
@@ -687,6 +725,7 @@ class HeartRateMonitor {
         // Calculate heart rate for each region using multiple algorithms
         const allResults = [];
         const algorithmResults = {};
+        const regionAlgorithmResults = {};
         
         for (const [regionName, buffer] of validRegions) {
             const signal = buffer.map(frame => frame.value);
@@ -694,6 +733,10 @@ class HeartRateMonitor {
             
             // Get heart rate for this region using each algorithm
             const heartSignal = this.bandpassFilter(detrendedSignal, 0.75, 4, this.samplingRate);
+            
+            if (!regionAlgorithmResults[regionName]) {
+                regionAlgorithmResults[regionName] = {};
+            }
             
             for (const [algoName, algoFunc] of Object.entries(this.algorithms)) {
                 const heartRate = algoFunc(heartSignal, this.samplingRate, 0.75, 4);
@@ -710,6 +753,12 @@ class HeartRateMonitor {
                         algorithmResults[algoName] = [];
                     }
                     algorithmResults[algoName].push(heartRate);
+                    
+                    // Track results by region and algorithm
+                    if (!regionAlgorithmResults[regionName][algoName]) {
+                        regionAlgorithmResults[regionName][algoName] = [];
+                    }
+                    regionAlgorithmResults[regionName][algoName].push(heartRate);
                 }
             }
         }
@@ -733,14 +782,29 @@ class HeartRateMonitor {
         if (this.sessionStartTime) {
             const currentTime = Math.floor((Date.now() - this.sessionStartTime) / 1000);
             
-            // Store individual algorithm results
+            // Store combined algorithm results
             for (const [algoName, results] of Object.entries(algorithmResults)) {
                 if (results.length > 0) {
                     const algoMedian = results.sort((a, b) => a - b)[Math.floor(results.length / 2)];
-                    this.algorithmHistory[algoName].push({
+                    this.algorithmHistory.all[algoName].push({
                         time: currentTime,
                         value: algoMedian
                     });
+                }
+            }
+            
+            // Store region-specific algorithm results
+            for (const [regionName, regionAlgos] of Object.entries(regionAlgorithmResults)) {
+                for (const [algoName, results] of Object.entries(regionAlgos)) {
+                    if (results.length > 0) {
+                        const algoMedian = results.sort((a, b) => a - b)[Math.floor(results.length / 2)];
+                        if (this.algorithmHistory[regionName] && this.algorithmHistory[regionName][algoName]) {
+                            this.algorithmHistory[regionName][algoName].push({
+                                time: currentTime,
+                                value: algoMedian
+                            });
+                        }
+                    }
                 }
             }
             
@@ -1250,21 +1314,33 @@ class HeartRateMonitor {
     updateAlgorithmComparisonChart() {
         if (!this.algorithmComparisonChart) return;
         
-        // Get all time points
+        // Get selected region
+        const selectedRegion = document.getElementById('algorithmRegionSelect').value;
+        const regionData = this.algorithmHistory[selectedRegion];
+        if (!regionData) return;
+        
+        // Get all time points for this region
         const allTimes = new Set();
-        Object.values(this.algorithmHistory).forEach(history => {
+        Object.values(regionData).forEach(history => {
             history.forEach(point => allTimes.add(point.time));
         });
         const times = Array.from(allTimes).sort((a, b) => a - b);
         
         if (times.length === 0) return;
         
+        // Update chart title
+        const regionLabel = selectedRegion === 'all' ? 'All Regions Combined' : 
+            selectedRegion.replace(/([A-Z])/g, ' $1').trim();
+        this.algorithmComparisonChart.options.plugins.title = {
+            display: true,
+            text: `Algorithm Comparison - ${regionLabel}`
+        };
+        
         // Prepare data for each algorithm
-        const datasets = [];
         const algorithmNames = ['FFT', 'PeakDetection', 'Autocorrelation', 'Wavelet'];
         
         algorithmNames.forEach((algoName, index) => {
-            const history = this.algorithmHistory[algoName];
+            const history = regionData[algoName];
             const data = times.map(time => {
                 const point = history.find(p => p.time === time);
                 return point ? point.value : null;
@@ -1273,11 +1349,30 @@ class HeartRateMonitor {
             this.algorithmComparisonChart.data.datasets[index].data = data;
         });
         
-        // Add consensus line (from full history)
-        const consensusData = times.map(time => {
-            const point = this.fullHistory.find(p => p.time === time);
-            return point ? point.heartRate : null;
-        });
+        // Add consensus line (from full history for "all", or calculate median for specific region)
+        let consensusData;
+        if (selectedRegion === 'all') {
+            consensusData = times.map(time => {
+                const point = this.fullHistory.find(p => p.time === time);
+                return point ? point.heartRate : null;
+            });
+        } else {
+            // Calculate median across algorithms for this region
+            consensusData = times.map(time => {
+                const values = algorithmNames
+                    .map(algoName => {
+                        const point = regionData[algoName].find(p => p.time === time);
+                        return point ? point.value : null;
+                    })
+                    .filter(v => v !== null);
+                
+                if (values.length > 0) {
+                    values.sort((a, b) => a - b);
+                    return values[Math.floor(values.length / 2)];
+                }
+                return null;
+            });
+        }
         this.algorithmComparisonChart.data.datasets[4].data = consensusData;
         
         // Update labels
@@ -1288,6 +1383,8 @@ class HeartRateMonitor {
         if (duration > 300) { // More than 5 minutes
             this.algorithmComparisonChart.options.scales.x.title.text = 'Time (minutes from start)';
             this.algorithmComparisonChart.data.labels = times.map(t => (t / 60).toFixed(1));
+        } else {
+            this.algorithmComparisonChart.options.scales.x.title.text = 'Time (seconds from start)';
         }
         
         this.algorithmComparisonChart.update();
@@ -1356,8 +1453,10 @@ class HeartRateMonitor {
         }
         
         // Clear algorithm history
-        Object.keys(this.algorithmHistory).forEach(key => {
-            this.algorithmHistory[key] = [];
+        Object.keys(this.algorithmHistory).forEach(region => {
+            Object.keys(this.algorithmHistory[region]).forEach(algo => {
+                this.algorithmHistory[region][algo] = [];
+            });
         });
         
         // Hide export button
