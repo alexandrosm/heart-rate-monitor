@@ -1595,12 +1595,28 @@ class HeartRateMonitor {
         const mad = sorted.map(v => Math.abs(v - median)).sort((a, b) => a - b)[Math.floor(sorted.length / 2)];
         const noise = mad * 1.4826; // MAD to std deviation
         
-        // Find dominant frequency component magnitude
-        const fft = this.performFFT(values);
-        const magnitudes = fft.map(c => Math.sqrt(c.real * c.real + c.imag * c.imag));
-        const signal = Math.max(...magnitudes.slice(1, Math.floor(magnitudes.length / 2)));
+        // Use simplified FFT to find dominant frequency magnitude
+        const fftSize = Math.min(values.length, 128);
+        const powerSpectrum = [];
         
-        return noise > 0 ? 20 * Math.log10(signal / noise) : 0;
+        // Compute power spectrum
+        for (let k = 0; k < fftSize / 2; k++) {
+            let real = 0, imag = 0;
+            
+            for (let n = 0; n < fftSize; n++) {
+                const angle = -2 * Math.PI * k * n / fftSize;
+                const value = n < values.length ? values[n] : 0;
+                real += value * Math.cos(angle);
+                imag += value * Math.sin(angle);
+            }
+            
+            powerSpectrum.push(Math.sqrt(real * real + imag * imag));
+        }
+        
+        // Find peak magnitude (excluding DC component)
+        const signal = Math.max(...powerSpectrum.slice(1));
+        
+        return noise > 0 && signal > 0 ? 20 * Math.log10(signal / noise) : 0;
     }
     
     updatePerformanceDisplay() {
