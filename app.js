@@ -125,8 +125,8 @@ class HeartRateMonitor {
                 maintainAspectRatio: false,
                 scales: {
                     y: {
-                        beginAtZero: false,
-                        suggestedMin: 50,
+                        beginAtZero: true,
+                        min: 0,
                         suggestedMax: 120,
                         title: {
                             display: true,
@@ -184,8 +184,8 @@ class HeartRateMonitor {
                         type: 'linear',
                         display: true,
                         position: 'left',
-                        beginAtZero: false,
-                        suggestedMin: 50,
+                        beginAtZero: true,
+                        min: 0,
                         suggestedMax: 120,
                         title: {
                             display: true,
@@ -200,8 +200,8 @@ class HeartRateMonitor {
                         type: 'linear',
                         display: true,
                         position: 'right',
-                        beginAtZero: false,
-                        suggestedMin: 10,
+                        beginAtZero: true,
+                        min: 0,
                         suggestedMax: 30,
                         title: {
                             display: true,
@@ -299,8 +299,8 @@ class HeartRateMonitor {
                 },
                 scales: {
                     y: {
-                        beginAtZero: false,
-                        suggestedMin: 50,
+                        beginAtZero: true,
+                        min: 0,
                         suggestedMax: 120,
                         title: {
                             display: true,
@@ -1235,21 +1235,7 @@ class HeartRateMonitor {
         this.fullHistoryChart.data.datasets[0].data = heartRates;
         this.fullHistoryChart.data.datasets[1].data = breathingRates;
         
-        // Dynamic scaling based on data range
-        const minHR = Math.min(...heartRates.filter(hr => hr > 0));
-        const maxHR = Math.max(...heartRates.filter(hr => hr > 0));
-        const minBR = Math.min(...breathingRates.filter(br => br > 0));
-        const maxBR = Math.max(...breathingRates.filter(br => br > 0));
-        
-        if (!isNaN(minHR) && !isNaN(maxHR)) {
-            this.fullHistoryChart.options.scales['y-heart'].suggestedMin = Math.max(40, minHR - 10);
-            this.fullHistoryChart.options.scales['y-heart'].suggestedMax = Math.min(180, maxHR + 10);
-        }
-        
-        if (!isNaN(minBR) && !isNaN(maxBR)) {
-            this.fullHistoryChart.options.scales['y-breath'].suggestedMin = Math.max(5, minBR - 5);
-            this.fullHistoryChart.options.scales['y-breath'].suggestedMax = Math.min(40, maxBR + 5);
-        }
+        // Keep y-axes zero-based, no dynamic scaling
         
         // Update x-axis to show time nicely
         const duration = times[times.length - 1] || 0;
