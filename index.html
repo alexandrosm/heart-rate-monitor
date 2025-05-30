@@ -10,9 +10,6 @@
             margin: 0;
             padding: 20px;
             background: #f0f0f0;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
             min-height: 100vh;
         }
         
@@ -20,9 +17,29 @@
             background: white;
             border-radius: 10px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            padding: 30px;
-            max-width: 800px;
+            padding: 20px;
+            max-width: 1400px;
             width: 100%;
+            margin: 0 auto;
+        }
+        
+        .main-layout {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            align-items: start;
+        }
+        
+        .video-section, .stats-section {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+        }
+        
+        @media (max-width: 1200px) {
+            .main-layout {
+                grid-template-columns: 1fr;
+            }
         }
         
         h1 {
@@ -34,8 +51,7 @@
         .video-container {
             position: relative;
             width: 100%;
-            max-width: 640px;
-            margin: 0 auto 30px;
+            margin: 0 auto 20px;
             background: #000;
             border-radius: 8px;
             overflow: hidden;
@@ -59,9 +75,15 @@
             z-index: 2;
         }
         
+        .vitals-display {
+            display: flex;
+            justify-content: space-around;
+            margin: 20px 0;
+        }
+        
         .heart-rate-display {
             text-align: center;
-            margin: 30px 0;
+            margin: 20px 0;
         }
         
         .heart-rate-value {
@@ -130,7 +152,7 @@
         .chart-container {
             width: 100%;
             height: 200px;
-            margin: 30px 0;
+            margin: 20px 0;
             position: relative;
         }
         
@@ -158,6 +180,15 @@
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
+        }
+        
+        .section-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #2c3e50;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e0e0e0;
         }
         
         .instructions {
@@ -205,80 +236,92 @@
     <div class="container">
         <h1>Heart Rate Monitor</h1>
         
-        <div class="instructions">
-            <h3>Instructions:</h3>
-            <ul>
-                <li>Ensure you're in a well-lit room</li>
-                <li>Position your face clearly in the camera view</li>
-                <li>Try to remain still for accurate measurements</li>
-                <li>Wait 10-15 seconds for the reading to stabilize</li>
-            </ul>
-        </div>
-        
-        <div class="video-container">
-            <video id="video" autoplay muted></video>
-            <canvas id="canvas"></canvas>
-        </div>
-        
-        <div class="controls">
-            <button id="startBtn">Start Monitoring</button>
-            <button id="stopBtn" disabled>Stop Monitoring</button>
-        </div>
-        
-        <div class="controls" style="margin-top: 10px;">
-            <label style="margin-right: 20px;">
-                <input type="checkbox" id="showRegions" checked> Show Regions
-            </label>
-            <label style="margin-right: 20px;">
-                <input type="checkbox" id="showAlgorithms" checked> Show Algorithms
-            </label>
-            <label style="margin-right: 20px;">
-                <input type="checkbox" id="showHistogram" checked> Show Histogram
-            </label>
-            <label>
-                <input type="checkbox" id="showPulse" checked> Show Pulse
-            </label>
-        </div>
-        
-        <div class="controls" style="margin-top: 10px;">
-            <button id="toggleAll" style="font-size: 14px; padding: 8px 16px;">Toggle All Overlays</button>
-        </div>
-        
-        <div class="status" id="status">Ready to start monitoring</div>
-        
-        <div class="loading" id="loading">
-            <div class="spinner"></div>
-            <p>Detecting face and measuring heart rate...</p>
-        </div>
-        
-        <div class="heart-rate-display">
-            <div class="heart-rate-label">Heart Rate</div>
-            <div>
-                <span class="heart-rate-value" id="heartRate">--</span>
-                <span class="pulse-icon">❤️</span>
+        <div class="main-layout">
+            <!-- Left Column: Video and Controls -->
+            <div class="video-section">
+                <h2 class="section-title">Camera View</h2>
+                <div class="video-container">
+                    <video id="video" autoplay muted></video>
+                    <canvas id="canvas"></canvas>
+                </div>
+                
+                <div class="controls">
+                    <button id="startBtn">Start Monitoring</button>
+                    <button id="stopBtn" disabled>Stop Monitoring</button>
+                </div>
+                
+                <div class="controls" style="margin-top: 10px;">
+                    <label style="margin-right: 20px;">
+                        <input type="checkbox" id="showRegions" checked> Show Regions
+                    </label>
+                    <label style="margin-right: 20px;">
+                        <input type="checkbox" id="showAlgorithms" checked> Show Algorithms
+                    </label>
+                    <label style="margin-right: 20px;">
+                        <input type="checkbox" id="showHistogram" checked> Show Histogram
+                    </label>
+                    <label>
+                        <input type="checkbox" id="showPulse" checked> Show Pulse
+                    </label>
+                </div>
+                
+                <div class="controls" style="margin-top: 10px;">
+                    <button id="toggleAll" style="font-size: 14px; padding: 8px 16px;">Toggle All Overlays</button>
+                </div>
+                
+                <div class="status" id="status">Ready to start monitoring</div>
+                
+                <div class="loading" id="loading">
+                    <div class="spinner"></div>
+                    <p>Detecting face and measuring heart rate...</p>
+                </div>
             </div>
-            <div class="heart-rate-label">BPM</div>
-        </div>
-        
-        <div class="heart-rate-display" style="margin-top: -20px;">
-            <div class="heart-rate-label" style="color: #3498db;">Breathing Rate</div>
-            <div>
-                <span class="heart-rate-value" id="breathingRate" style="font-size: 48px; color: #3498db;">--</span>
-                <span class="pulse-icon" style="font-size: 32px; color: #3498db; animation-duration: 4s;">💨</span>
+            
+            <!-- Right Column: Stats and Charts -->
+            <div class="stats-section">
+                <h2 class="section-title">Vital Signs & Analytics</h2>
+                <div class="instructions">
+                    <h3>Instructions:</h3>
+                    <ul>
+                        <li>Ensure you're in a well-lit room</li>
+                        <li>Position your face clearly in the camera view</li>
+                        <li>Try to remain still for accurate measurements</li>
+                        <li>Wait 10-15 seconds for the reading to stabilize</li>
+                    </ul>
+                </div>
+                
+                <div class="vitals-display">
+                    <div class="heart-rate-display">
+                        <div class="heart-rate-label">Heart Rate</div>
+                        <div>
+                            <span class="heart-rate-value" id="heartRate">--</span>
+                            <span class="pulse-icon">❤️</span>
+                        </div>
+                        <div class="heart-rate-label">BPM</div>
+                    </div>
+                    
+                    <div class="heart-rate-display" style="margin-top: -20px;">
+                        <div class="heart-rate-label" style="color: #3498db;">Breathing Rate</div>
+                        <div>
+                            <span class="heart-rate-value" id="breathingRate" style="font-size: 48px; color: #3498db;">--</span>
+                            <span class="pulse-icon" style="font-size: 32px; color: #3498db; animation-duration: 4s;">💨</span>
+                        </div>
+                        <div class="heart-rate-label" style="color: #3498db;">breaths/min</div>
+                    </div>
+                </div>
+                
+                <div class="chart-container">
+                    <canvas id="heartRateChart"></canvas>
+                </div>
+                
+                <div class="chart-container" style="margin-top: 20px; height: 250px;">
+                    <h3 style="text-align: center; margin-bottom: 10px; color: #333;">
+                        Full Session History
+                        <button id="exportData" style="font-size: 12px; padding: 4px 8px; margin-left: 10px; display: none;">Export CSV</button>
+                    </h3>
+                    <canvas id="fullHistoryChart"></canvas>
+                </div>
             </div>
-            <div class="heart-rate-label" style="color: #3498db;">breaths/min</div>
-        </div>
-        
-        <div class="chart-container">
-            <canvas id="heartRateChart"></canvas>
-        </div>
-        
-        <div class="chart-container" style="margin-top: 20px; height: 250px;">
-            <h3 style="text-align: center; margin-bottom: 10px; color: #333;">
-                Full Session History
-                <button id="exportData" style="font-size: 12px; padding: 4px 8px; margin-left: 10px; display: none;">Export CSV</button>
-            </h3>
-            <canvas id="fullHistoryChart"></canvas>
         </div>
     </div>
     

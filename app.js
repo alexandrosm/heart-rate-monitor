@@ -2,7 +2,7 @@ class HeartRateMonitor {
     constructor() {
         this.video = document.getElementById('video');
         this.canvas = document.getElementById('canvas');
-        this.ctx = this.canvas.getContext('2d');
+        this.ctx = this.canvas.getContext('2d', { willReadFrequently: true });
         this.startBtn = document.getElementById('startBtn');
         this.stopBtn = document.getElementById('stopBtn');
         this.status = document.getElementById('status');
@@ -43,7 +43,7 @@ class HeartRateMonitor {
         
         // Create offscreen canvas for double buffering
         this.offscreenCanvas = document.createElement('canvas');
-        this.offscreenCtx = this.offscreenCanvas.getContext('2d');
+        this.offscreenCtx = this.offscreenCanvas.getContext('2d', { willReadFrequently: true });
         
         // Multi-region detection
         this.regionBuffers = {
@@ -323,68 +323,76 @@ class HeartRateMonitor {
             const rightEye = landmarks.getRightEye();
             const jawline = landmarks.getJawOutline();
             
-            // Define multiple regions
+            // Define multiple regions with boundary checks
+            const videoWidth = this.video.videoWidth;
+            const videoHeight = this.video.videoHeight;
+            
             const regions = {
                 forehead: {
-                    x: leftEyebrow[0].x,
-                    y: Math.min(...leftEyebrow.concat(rightEyebrow).map(p => p.y)) - 30,
-                    width: rightEyebrow[rightEyebrow.length - 1].x - leftEyebrow[0].x,
-                    height: 30
+                    x: Math.max(0, leftEyebrow[0].x),
+                    y: Math.max(0, Math.min(...leftEyebrow.concat(rightEyebrow).map(p => p.y)) - 30),
+                    width: Math.min(videoWidth - leftEyebrow[0].x, rightEyebrow[rightEyebrow.length - 1].x - leftEyebrow[0].x),
+                    height: Math.min(30, videoHeight - (Math.min(...leftEyebrow.concat(rightEyebrow).map(p => p.y)) - 30))
                 },
                 leftUnderEye: {
-                    x: leftEye[0].x - 5,
-                    y: Math.max(...leftEye.map(p => p.y)) + 5,
-                    width: leftEye[3].x - leftEye[0].x + 10,
-                    height: 25
+                    x: Math.max(0, leftEye[0].x - 5),
+                    y: Math.max(0, Math.max(...leftEye.map(p => p.y)) + 5),
+                    width: Math.min(videoWidth - (leftEye[0].x - 5), leftEye[3].x - leftEye[0].x + 10),
+                    height: Math.min(25, videoHeight - (Math.max(...leftEye.map(p => p.y)) + 5))
                 },
                 rightUnderEye: {
-                    x: rightEye[0].x - 5,
-                    y: Math.max(...rightEye.map(p => p.y)) + 5,
-                    width: rightEye[3].x - rightEye[0].x + 10,
-                    height: 25
+                    x: Math.max(0, rightEye[0].x - 5),
+                    y: Math.max(0, Math.max(...rightEye.map(p => p.y)) + 5),
+                    width: Math.min(videoWidth - (rightEye[0].x - 5), rightEye[3].x - rightEye[0].x + 10),
+                    height: Math.min(25, videoHeight - (Math.max(...rightEye.map(p => p.y)) + 5))
                 },
                 noseBridge: {
-                    x: nose[0].x - 15,
-                    y: nose[0].y - 10,
-                    width: 30,
-                    height: 25
+                    x: Math.max(0, nose[0].x - 15),
+                    y: Math.max(0, nose[0].y - 10),
+                    width: Math.min(30, videoWidth - (nose[0].x - 15)),
+                    height: Math.min(25, videoHeight - (nose[0].y - 10))
                 }
             };
             
             // Process each region
             const tempCanvas = document.createElement('canvas');
-            const tempCtx = tempCanvas.getContext('2d');
+            const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
             
             for (const [regionName, region] of Object.entries(regions)) {
-                // Validate region bounds
-                if (region.width > 0 && region.height > 0 && 
-                    region.x >= 0 && region.y >= 0 &&
-                    region.x + region.width <= this.video.videoWidth &&
-                    region.y + region.height <= this.video.videoHeight) {
+                // Validate region bounds more strictly
+                const validWidth = Math.floor(region.width);
+                const validHeight = Math.floor(region.height);
+                const validX = Math.max(0, Math.floor(region.x));
+                const validY = Math.max(0, Math.floor(region.y));
+                
+                if (validWidth > 0 && validHeight > 0 && 
+                    validX >= 0 && validY >= 0 &&
+                    validX + validWidth <= this.video.videoWidth &&
+                    validY + validHeight <= this.video.videoHeight) {
                     
                     // Draw region overlay if enabled
                     if (this.showRegions.checked) {
                         this.ctx.strokeStyle = this.regionColors[regionName];
                         this.ctx.lineWidth = 2;
-                        this.ctx.strokeRect(region.x, region.y, region.width, region.height);
+                        this.ctx.strokeRect(validX, validY, validWidth, validHeight);
                         
                         // Draw region label
                         this.ctx.fillStyle = this.regionColors[regionName];
                         this.ctx.font = '12px Arial';
-                        this.ctx.fillText(regionName, region.x, region.y - 5);
+                        this.ctx.fillText(regionName, validX, validY - 5);
                     }
                     
                     // Extract region for analysis
-                    tempCanvas.width = region.width;
-                    tempCanvas.height = region.height;
+                    tempCanvas.width = validWidth;
+                    tempCanvas.height = validHeight;
                     tempCtx.drawImage(
                         this.video,
-                        region.x, region.y, region.width, region.height,
-                        0, 0, region.width, region.height
+                        validX, validY, validWidth, validHeight,
+                        0, 0, validWidth, validHeight
                     );
                     
                     // Get signal value
-                    const imageData = tempCtx.getImageData(0, 0, region.width, region.height);
+                    const imageData = tempCtx.getImageData(0, 0, validWidth, validHeight);
                     const signalValue = this.getAverageGreenChannel(imageData);
                     
                     // Add to region buffer
