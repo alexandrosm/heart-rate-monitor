@@ -59,9 +59,18 @@ class HeartRateMonitor {
         this.chart = null;
         this.fullHistoryChart = null;
         this.algorithmComparisonChart = null;
+        this.regionConsensusChart = null;
         this.sessionStartTime = null;
         this.currentHeartRate = 0;
         this.currentBreathingRate = 0;
+        
+        // Regional consensus tracking
+        this.regionConsensusHistory = {
+            forehead: [],
+            leftUnderEye: [],
+            rightUnderEye: [],
+            noseBridge: []
+        };
         
         // Performance tracking
         this.performanceMetrics = {
@@ -276,6 +285,98 @@ class HeartRateMonitor {
             }
         });
         
+        // Initialize regional consensus chart
+        const regionCtx = document.getElementById('regionConsensusChart').getContext('2d');
+        this.regionConsensusChart = new Chart(regionCtx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [
+                    {
+                        label: 'Forehead',
+                        data: [],
+                        borderColor: '#e74c3c',
+                        backgroundColor: 'rgba(231, 76, 60, 0.1)',
+                        borderWidth: 2,
+                        tension: 0.1,
+                        pointRadius: 0
+                    },
+                    {
+                        label: 'Left Under-Eye',
+                        data: [],
+                        borderColor: '#3498db',
+                        backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                        borderWidth: 2,
+                        tension: 0.1,
+                        pointRadius: 0
+                    },
+                    {
+                        label: 'Right Under-Eye',
+                        data: [],
+                        borderColor: '#2ecc71',
+                        backgroundColor: 'rgba(46, 204, 113, 0.1)',
+                        borderWidth: 2,
+                        tension: 0.1,
+                        pointRadius: 0
+                    },
+                    {
+                        label: 'Nose Bridge',
+                        data: [],
+                        borderColor: '#f39c12',
+                        backgroundColor: 'rgba(243, 156, 18, 0.1)',
+                        borderWidth: 2,
+                        tension: 0.1,
+                        pointRadius: 0
+                    },
+                    {
+                        label: 'Overall Consensus',
+                        data: [],
+                        borderColor: '#9b59b6',
+                        backgroundColor: 'rgba(155, 89, 182, 0.1)',
+                        borderWidth: 3,
+                        borderDash: [5, 5],
+                        tension: 0.1,
+                        pointRadius: 0
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    mode: 'index',
+                    intersect: false,
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        min: 0,
+                        suggestedMax: 120,
+                        title: {
+                            display: true,
+                            text: 'Heart Rate (BPM)'
+                        }
+                    },
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Time (seconds from start)'
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top'
+                    },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                    }
+                }
+            }
+        });
+        
         // Initialize algorithm comparison charts for each region
         this.algorithmCharts = {};
         const regions = ['all', 'forehead', 'leftUnderEye', 'rightUnderEye', 'noseBridge'];
@@ -430,6 +531,11 @@ class HeartRateMonitor {
                 Object.keys(this.performanceMetrics[region]).forEach(algo => {
                     this.performanceMetrics[region][algo] = [];
                 });
+            });
+            
+            // Reset regional consensus history
+            Object.keys(this.regionConsensusHistory).forEach(region => {
+                this.regionConsensusHistory[region] = [];
             });
             
             // Show performance analysis div
@@ -915,6 +1021,46 @@ class HeartRateMonitor {
                     });
                 }
             }
+            
+            // Calculate and store regional consensus
+            const regionalConsensus = {};
+            for (const [regionName, regionAlgos] of Object.entries(regionAlgorithmResults)) {
+                const regionResults = [];
+                for (const [algoName, results] of Object.entries(regionAlgos)) {
+                    if (results.length > 0) {
+                        // Apply algorithm weights to each result
+                        const algoWeight = algoWeights[algoName] || 0.25;
+                        results.forEach(hr => {
+                            regionResults.push({ value: hr, weight: algoWeight });
+                        });
+                    }
+                }
+                
+                if (regionResults.length > 0) {
+                    // Calculate weighted consensus for this region
+                    const weightedSum = regionResults.reduce((sum, r) => sum + r.value * r.weight, 0);
+                    const totalWeight = regionResults.reduce((sum, r) => sum + r.weight, 0);
+                    const regionConsensusHR = totalWeight > 0 ? weightedSum / totalWeight : 0;
+                    
+                    regionalConsensus[regionName] = regionConsensusHR;
+                    
+                    // Store in history
+                    if (this.regionConsensusHistory[regionName]) {
+                        this.regionConsensusHistory[regionName].push({
+                            time: currentTime,
+                            value: Math.round(regionConsensusHR)
+                        });
+                        
+                        // Keep history limited
+                        if (this.regionConsensusHistory[regionName].length > 300) {
+                            this.regionConsensusHistory[regionName].shift();
+                        }
+                    }
+                }
+            }
+            
+            // Update regional consensus chart
+            this.updateRegionalConsensusChart();
             
             // Store region-specific algorithm results
             for (const [regionName, regionAlgos] of Object.entries(regionAlgorithmResults)) {
@@ -1412,6 +1558,54 @@ class HeartRateMonitor {
         this.chart.update();
     }
     
+    updateRegionalConsensusChart() {
+        if (!this.regionConsensusChart) return;
+        
+        // Get all time points
+        const allTimes = new Set();
+        Object.values(this.regionConsensusHistory).forEach(history => {
+            history.forEach(point => allTimes.add(point.time));
+        });
+        
+        // Also add times from full history for overall consensus
+        this.fullHistory.forEach(point => allTimes.add(point.time));
+        
+        const times = Array.from(allTimes).sort((a, b) => a - b);
+        
+        if (times.length === 0) return;
+        
+        // Update each region's data
+        const regionNames = ['forehead', 'leftUnderEye', 'rightUnderEye', 'noseBridge'];
+        regionNames.forEach((region, index) => {
+            const data = times.map(time => {
+                const point = this.regionConsensusHistory[region].find(p => p.time === time);
+                return point ? point.value : null;
+            });
+            this.regionConsensusChart.data.datasets[index].data = data;
+        });
+        
+        // Update overall consensus (from full history)
+        const overallData = times.map(time => {
+            const point = this.fullHistory.find(p => p.time === time);
+            return point ? point.heartRate : null;
+        });
+        this.regionConsensusChart.data.datasets[4].data = overallData;
+        
+        // Update labels
+        this.regionConsensusChart.data.labels = times;
+        
+        // Update x-axis for longer sessions
+        const duration = times[times.length - 1] || 0;
+        if (duration > 300) { // More than 5 minutes
+            this.regionConsensusChart.options.scales.x.title.text = 'Time (minutes from start)';
+            this.regionConsensusChart.data.labels = times.map(t => (t / 60).toFixed(1));
+        } else {
+            this.regionConsensusChart.options.scales.x.title.text = 'Time (seconds from start)';
+        }
+        
+        this.regionConsensusChart.update();
+    }
+    
     updateFullHistoryChart() {
         if (!this.fullHistoryChart || this.fullHistory.length === 0) return;
         
@@ -1791,6 +1985,15 @@ class HeartRateMonitor {
                 });
                 chart.update();
             });
+        }
+        
+        // Clear regional consensus chart
+        if (this.regionConsensusChart) {
+            this.regionConsensusChart.data.labels = [];
+            this.regionConsensusChart.data.datasets.forEach(dataset => {
+                dataset.data = [];
+            });
+            this.regionConsensusChart.update();
         }
         
         // Clear algorithm history
