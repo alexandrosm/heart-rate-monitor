@@ -22,7 +22,10 @@ class HeartRateMonitor {
         this.samplingRate = 30;
         this.heartRateHistory = [];
         this.breathingRateHistory = [];
+        this.fullHistory = [];
         this.chart = null;
+        this.fullHistoryChart = null;
+        this.sessionStartTime = null;
         this.currentHeartRate = 0;
         this.currentBreathingRate = 0;
         
@@ -45,15 +48,15 @@ class HeartRateMonitor {
         // Multi-region detection
         this.regionBuffers = {
             forehead: [],
-            leftCheek: [],
-            rightCheek: [],
-            nose: []
+            leftUnderEye: [],
+            rightUnderEye: [],
+            noseBridge: []
         };
         this.regionColors = {
             forehead: '#00ff00',
-            leftCheek: '#ff00ff',
-            rightCheek: '#00ffff',
-            nose: '#ffff00'
+            leftUnderEye: '#ff00ff',
+            rightUnderEye: '#00ffff',
+            noseBridge: '#ffff00'
         };
         
         // Algorithm selection
@@ -79,6 +82,10 @@ class HeartRateMonitor {
             const anyChecked = checkboxes.some(cb => cb.checked);
             checkboxes.forEach(cb => cb.checked = !anyChecked);
         });
+        
+        // Export data button
+        const exportBtn = document.getElementById('exportData');
+        exportBtn.addEventListener('click', () => this.exportData());
     }
     
     initializeChart() {
@@ -123,6 +130,93 @@ class HeartRateMonitor {
                 }
             }
         });
+        
+        // Initialize full history chart
+        const fullCtx = document.getElementById('fullHistoryChart').getContext('2d');
+        this.fullHistoryChart = new Chart(fullCtx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Heart Rate (BPM)',
+                    data: [],
+                    borderColor: '#e74c3c',
+                    backgroundColor: 'rgba(231, 76, 60, 0.1)',
+                    tension: 0.4,
+                    fill: false,
+                    yAxisID: 'y-heart'
+                }, {
+                    label: 'Breathing Rate (breaths/min)',
+                    data: [],
+                    borderColor: '#3498db',
+                    backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                    tension: 0.4,
+                    fill: false,
+                    yAxisID: 'y-breath'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    mode: 'index',
+                    intersect: false,
+                },
+                scales: {
+                    'y-heart': {
+                        type: 'linear',
+                        display: true,
+                        position: 'left',
+                        beginAtZero: false,
+                        suggestedMin: 50,
+                        suggestedMax: 120,
+                        title: {
+                            display: true,
+                            text: 'Heart Rate (BPM)',
+                            color: '#e74c3c'
+                        },
+                        ticks: {
+                            color: '#e74c3c'
+                        }
+                    },
+                    'y-breath': {
+                        type: 'linear',
+                        display: true,
+                        position: 'right',
+                        beginAtZero: false,
+                        suggestedMin: 10,
+                        suggestedMax: 30,
+                        title: {
+                            display: true,
+                            text: 'Breathing Rate (breaths/min)',
+                            color: '#3498db'
+                        },
+                        ticks: {
+                            color: '#3498db'
+                        },
+                        grid: {
+                            drawOnChartArea: false,
+                        }
+                    },
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Time (seconds from start)'
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top'
+                    },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                    }
+                }
+            }
+        });
     }
     
     async startMonitoring() {
@@ -163,6 +257,10 @@ class HeartRateMonitor {
             this.isMonitoring = true;
             this.stopBtn.disabled = false;
             this.status.textContent = 'Monitoring heart rate...';
+            
+            // Track session start time
+            this.sessionStartTime = Date.now();
+            this.fullHistory = [];
             
             // Start processing frames
             this.processFrames();
@@ -233,23 +331,23 @@ class HeartRateMonitor {
                     width: rightEyebrow[rightEyebrow.length - 1].x - leftEyebrow[0].x,
                     height: 30
                 },
-                leftCheek: {
-                    x: jawline[2].x,
-                    y: nose[3].y,
-                    width: leftEye[0].x - jawline[2].x - 10,
-                    height: jawline[4].y - nose[3].y
+                leftUnderEye: {
+                    x: leftEye[0].x - 5,
+                    y: Math.max(...leftEye.map(p => p.y)) + 5,
+                    width: leftEye[3].x - leftEye[0].x + 10,
+                    height: 25
                 },
-                rightCheek: {
-                    x: rightEye[3].x + 10,
-                    y: nose[3].y,
-                    width: jawline[14].x - rightEye[3].x - 10,
-                    height: jawline[12].y - nose[3].y
+                rightUnderEye: {
+                    x: rightEye[0].x - 5,
+                    y: Math.max(...rightEye.map(p => p.y)) + 5,
+                    width: rightEye[3].x - rightEye[0].x + 10,
+                    height: 25
                 },
-                nose: {
+                noseBridge: {
                     x: nose[0].x - 15,
-                    y: nose[0].y,
+                    y: nose[0].y - 10,
                     width: 30,
-                    height: nose[6].y - nose[0].y
+                    height: 25
                 }
             };
             
@@ -952,19 +1050,95 @@ class HeartRateMonitor {
             value: heartRate
         });
         
-        // Keep only last 30 readings
+        // Keep only last 30 readings for the small chart
         if (this.heartRateHistory.length > 30) {
             this.heartRateHistory.shift();
         }
         
-        // Update chart
+        // Add to full history
+        if (this.sessionStartTime) {
+            const secondsFromStart = Math.floor((Date.now() - this.sessionStartTime) / 1000);
+            this.fullHistory.push({
+                time: secondsFromStart,
+                heartRate: heartRate,
+                breathingRate: this.currentBreathingRate
+            });
+        }
+        
+        // Update charts
         this.updateChart();
+        this.updateFullHistoryChart();
     }
     
     updateChart() {
         this.chart.data.labels = this.heartRateHistory.map(h => h.time);
         this.chart.data.datasets[0].data = this.heartRateHistory.map(h => h.value);
         this.chart.update();
+    }
+    
+    updateFullHistoryChart() {
+        if (!this.fullHistoryChart || this.fullHistory.length === 0) return;
+        
+        // Show export button when we have data
+        document.getElementById('exportData').style.display = 'inline-block';
+        
+        // Prepare data
+        const times = this.fullHistory.map(h => h.time);
+        const heartRates = this.fullHistory.map(h => h.heartRate);
+        const breathingRates = this.fullHistory.map(h => h.breathingRate);
+        
+        // Update chart data
+        this.fullHistoryChart.data.labels = times;
+        this.fullHistoryChart.data.datasets[0].data = heartRates;
+        this.fullHistoryChart.data.datasets[1].data = breathingRates;
+        
+        // Dynamic scaling based on data range
+        const minHR = Math.min(...heartRates.filter(hr => hr > 0));
+        const maxHR = Math.max(...heartRates.filter(hr => hr > 0));
+        const minBR = Math.min(...breathingRates.filter(br => br > 0));
+        const maxBR = Math.max(...breathingRates.filter(br => br > 0));
+        
+        if (!isNaN(minHR) && !isNaN(maxHR)) {
+            this.fullHistoryChart.options.scales['y-heart'].suggestedMin = Math.max(40, minHR - 10);
+            this.fullHistoryChart.options.scales['y-heart'].suggestedMax = Math.min(180, maxHR + 10);
+        }
+        
+        if (!isNaN(minBR) && !isNaN(maxBR)) {
+            this.fullHistoryChart.options.scales['y-breath'].suggestedMin = Math.max(5, minBR - 5);
+            this.fullHistoryChart.options.scales['y-breath'].suggestedMax = Math.min(40, maxBR + 5);
+        }
+        
+        // Update x-axis to show time nicely
+        const duration = times[times.length - 1] || 0;
+        if (duration > 300) { // More than 5 minutes
+            this.fullHistoryChart.options.scales.x.title.text = 'Time (minutes from start)';
+            this.fullHistoryChart.data.labels = times.map(t => (t / 60).toFixed(1));
+        }
+        
+        this.fullHistoryChart.update();
+    }
+    
+    exportData() {
+        if (this.fullHistory.length === 0) return;
+        
+        // Create CSV content
+        let csv = 'Time (seconds),Heart Rate (BPM),Breathing Rate (breaths/min),Timestamp\n';
+        
+        this.fullHistory.forEach(entry => {
+            const timestamp = new Date(this.sessionStartTime + entry.time * 1000).toISOString();
+            csv += `${entry.time},${entry.heartRate},${entry.breathingRate},${timestamp}\n`;
+        });
+        
+        // Create download link
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `heart_rate_data_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
     }
     
     stopMonitoring() {
@@ -988,6 +1162,17 @@ class HeartRateMonitor {
         this.frameBuffer = [];
         this.currentHeartRate = 0;
         this.currentBreathingRate = 0;
+        
+        // Clear full history chart
+        if (this.fullHistoryChart) {
+            this.fullHistoryChart.data.labels = [];
+            this.fullHistoryChart.data.datasets[0].data = [];
+            this.fullHistoryChart.data.datasets[1].data = [];
+            this.fullHistoryChart.update();
+        }
+        
+        // Hide export button
+        document.getElementById('exportData').style.display = 'none';
     }
 }
 
