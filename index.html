@@ -297,6 +297,44 @@
         .stats-section::-webkit-scrollbar-thumb:hover {
             background: #a0a0a0;
         }
+        
+        #performanceAnalysis h3 {
+            margin-top: 0;
+            color: #2c3e50;
+            font-size: 18px;
+        }
+        
+        .best-combination {
+            background: #e8f5e9;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            border-left: 4px solid #4caf50;
+        }
+        
+        .region-rankings, .signal-quality {
+            margin-top: 15px;
+        }
+        
+        .region-rankings ul, .signal-quality ul {
+            margin: 5px 0;
+            padding-left: 20px;
+        }
+        
+        .quality-good {
+            color: #4caf50;
+            font-weight: bold;
+        }
+        
+        .quality-fair {
+            color: #ff9800;
+            font-weight: bold;
+        }
+        
+        .quality-poor {
+            color: #f44336;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
@@ -424,6 +462,10 @@
                             <canvas id="algorithmChart_noseBridge"></canvas>
                         </div>
                     </div>
+                </div>
+                
+                <div id="performanceAnalysis" style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; display: none;">
+                    <!-- Performance metrics will be inserted here by JavaScript -->
                 </div>
             </div>
         </div>

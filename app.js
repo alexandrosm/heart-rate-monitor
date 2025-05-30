@@ -63,6 +63,21 @@ class HeartRateMonitor {
         this.currentHeartRate = 0;
         this.currentBreathingRate = 0;
         
+        // Performance tracking
+        this.performanceMetrics = {
+            all: { FFT: [], PeakDetection: [], Autocorrelation: [], Wavelet: [] },
+            forehead: { FFT: [], PeakDetection: [], Autocorrelation: [], Wavelet: [] },
+            leftUnderEye: { FFT: [], PeakDetection: [], Autocorrelation: [], Wavelet: [] },
+            rightUnderEye: { FFT: [], PeakDetection: [], Autocorrelation: [], Wavelet: [] },
+            noseBridge: { FFT: [], PeakDetection: [], Autocorrelation: [], Wavelet: [] }
+        };
+        this.regionSignalQuality = {
+            forehead: { snr: 0, stability: 0 },
+            leftUnderEye: { snr: 0, stability: 0 },
+            rightUnderEye: { snr: 0, stability: 0 },
+            noseBridge: { snr: 0, stability: 0 }
+        };
+        
         // Face detection stability
         this.lastDetection = null;
         this.detectionMissCount = 0;
@@ -405,12 +420,20 @@ class HeartRateMonitor {
             this.sessionStartTime = Date.now();
             this.fullHistory = [];
             
-            // Reset algorithm history
+            // Reset algorithm history and performance metrics
             Object.keys(this.algorithmHistory).forEach(region => {
                 Object.keys(this.algorithmHistory[region]).forEach(algo => {
                     this.algorithmHistory[region][algo] = [];
                 });
             });
+            Object.keys(this.performanceMetrics).forEach(region => {
+                Object.keys(this.performanceMetrics[region]).forEach(algo => {
+                    this.performanceMetrics[region][algo] = [];
+                });
+            });
+            
+            // Show performance analysis div
+            document.getElementById('performanceAnalysis').style.display = 'block';
             
             // Start processing frames
             this.processFrames();
@@ -809,6 +832,12 @@ class HeartRateMonitor {
             // Update algorithm comparison chart if visible
             if (this.showAlgorithmChart.checked) {
                 this.updateAlgorithmComparisonCharts();
+            }
+            
+            // Calculate performance metrics every 5 seconds
+            if (this.frameCount % (30 * 5) === 0) { // Assuming ~30 fps
+                this.calculatePerformanceMetrics();
+                this.updatePerformanceDisplay();
             }
         }
         
@@ -1388,6 +1417,181 @@ class HeartRateMonitor {
         chart.update();
     }
     
+    calculatePerformanceMetrics() {
+        const consensusValues = this.fullHistory.map(h => h.heartRate);
+        if (consensusValues.length < 10) return; // Need enough data
+        
+        // For each region and algorithm
+        Object.keys(this.algorithmHistory).forEach(region => {
+            Object.keys(this.algorithmHistory[region]).forEach(algorithm => {
+                const history = this.algorithmHistory[region][algorithm];
+                if (history.length < 10) return;
+                
+                // Get recent values (last 30 seconds)
+                const recentValues = history.slice(-30).map(h => h.value);
+                const recentConsensus = consensusValues.slice(-30);
+                
+                // Calculate metrics
+                const metrics = {
+                    // Variance (lower is better - more stable)
+                    variance: this.calculateVariance(recentValues),
+                    
+                    // Deviation from consensus (lower is better)
+                    consensusDeviation: this.calculateMeanAbsoluteError(recentValues, recentConsensus),
+                    
+                    // Signal-to-noise ratio estimate (higher is better)
+                    snr: this.estimateSNR(recentValues),
+                    
+                    // Physiological plausibility (% of values in 40-180 BPM range)
+                    plausibility: recentValues.filter(v => v >= 40 && v <= 180).length / recentValues.length,
+                    
+                    // Timestamp for tracking
+                    timestamp: Date.now()
+                };
+                
+                // Store metrics
+                this.performanceMetrics[region][algorithm].push(metrics);
+                
+                // Keep only last 100 metric calculations
+                if (this.performanceMetrics[region][algorithm].length > 100) {
+                    this.performanceMetrics[region][algorithm].shift();
+                }
+            });
+        });
+        
+        // Calculate region signal quality
+        ['forehead', 'leftUnderEye', 'rightUnderEye', 'noseBridge'].forEach(region => {
+            const buffer = this.regionBuffers[region];
+            if (buffer.length > 20) {
+                const values = buffer.slice(-20).map(b => b.value);
+                this.regionSignalQuality[region] = {
+                    snr: this.estimateSNR(values),
+                    stability: 1 / (1 + this.calculateVariance(values) / 100) // 0-1 score
+                };
+            }
+        });
+    }
+    
+    calculateVariance(values) {
+        const mean = values.reduce((a, b) => a + b, 0) / values.length;
+        const squaredDiffs = values.map(v => Math.pow(v - mean, 2));
+        return squaredDiffs.reduce((a, b) => a + b, 0) / values.length;
+    }
+    
+    calculateMeanAbsoluteError(predicted, actual) {
+        if (predicted.length !== actual.length) return Infinity;
+        const errors = predicted.map((p, i) => Math.abs(p - (actual[i] || p)));
+        return errors.reduce((a, b) => a + b, 0) / errors.length;
+    }
+    
+    estimateSNR(values) {
+        if (values.length < 10) return 0;
+        
+        // Simple SNR estimate using peak-to-noise ratio
+        const sorted = [...values].sort((a, b) => a - b);
+        const median = sorted[Math.floor(sorted.length / 2)];
+        const mad = sorted.map(v => Math.abs(v - median)).sort((a, b) => a - b)[Math.floor(sorted.length / 2)];
+        const noise = mad * 1.4826; // MAD to std deviation
+        
+        // Find dominant frequency component magnitude
+        const fft = this.performFFT(values);
+        const magnitudes = fft.map(c => Math.sqrt(c.real * c.real + c.imag * c.imag));
+        const signal = Math.max(...magnitudes.slice(1, Math.floor(magnitudes.length / 2)));
+        
+        return noise > 0 ? 20 * Math.log10(signal / noise) : 0;
+    }
+    
+    updatePerformanceDisplay() {
+        // Get recent performance metrics
+        const recentMetrics = {};
+        const rankings = {
+            regions: {},
+            algorithms: {},
+            combined: []
+        };
+        
+        // Collect recent metrics for each region/algorithm combination
+        Object.keys(this.performanceMetrics).forEach(region => {
+            Object.keys(this.performanceMetrics[region]).forEach(algorithm => {
+                const metrics = this.performanceMetrics[region][algorithm];
+                if (metrics.length > 0) {
+                    const recent = metrics.slice(-10); // Last 10 measurements
+                    const avgMetrics = {
+                        variance: recent.reduce((a, m) => a + m.variance, 0) / recent.length,
+                        consensusDeviation: recent.reduce((a, m) => a + m.consensusDeviation, 0) / recent.length,
+                        snr: recent.reduce((a, m) => a + m.snr, 0) / recent.length,
+                        plausibility: recent.reduce((a, m) => a + m.plausibility, 0) / recent.length
+                    };
+                    
+                    // Calculate composite score (higher is better)
+                    const score = (avgMetrics.snr * 0.3) + 
+                                 (avgMetrics.plausibility * 100 * 0.3) +
+                                 ((1 / (1 + avgMetrics.variance)) * 100 * 0.2) +
+                                 ((1 / (1 + avgMetrics.consensusDeviation)) * 100 * 0.2);
+                    
+                    rankings.combined.push({
+                        region,
+                        algorithm,
+                        score,
+                        metrics: avgMetrics
+                    });
+                    
+                    // Track by region
+                    if (!rankings.regions[region]) rankings.regions[region] = [];
+                    rankings.regions[region].push({ algorithm, score });
+                    
+                    // Track by algorithm
+                    if (!rankings.algorithms[algorithm]) rankings.algorithms[algorithm] = [];
+                    rankings.algorithms[algorithm].push({ region, score });
+                }
+            });
+        });
+        
+        // Sort rankings
+        rankings.combined.sort((a, b) => b.score - a.score);
+        Object.keys(rankings.regions).forEach(region => {
+            rankings.regions[region].sort((a, b) => b.score - a.score);
+        });
+        Object.keys(rankings.algorithms).forEach(algo => {
+            rankings.algorithms[algo].sort((a, b) => b.score - a.score);
+        });
+        
+        // Update display
+        const performanceDiv = document.getElementById('performanceAnalysis');
+        if (!performanceDiv) return;
+        
+        let html = '<h3>Performance Analysis</h3>';
+        
+        // Best overall combination
+        if (rankings.combined.length > 0) {
+            const best = rankings.combined[0];
+            html += `<div class="best-combination">
+                <strong>Best Performance:</strong> ${best.region} - ${best.algorithm}<br>
+                <small>Score: ${best.score.toFixed(1)}, SNR: ${best.metrics.snr.toFixed(1)}dB, 
+                Stability: ${(1/(1+best.metrics.variance)*100).toFixed(0)}%</small>
+            </div>`;
+        }
+        
+        // Best algorithm per region
+        html += '<div class="region-rankings"><strong>Best Algorithm by Region:</strong><ul>';
+        Object.entries(rankings.regions).forEach(([region, algos]) => {
+            if (algos.length > 0) {
+                html += `<li>${region}: ${algos[0].algorithm} (${algos[0].score.toFixed(1)})</li>`;
+            }
+        });
+        html += '</ul></div>';
+        
+        // Signal quality indicators
+        html += '<div class="signal-quality"><strong>Region Signal Quality:</strong><ul>';
+        Object.entries(this.regionSignalQuality).forEach(([region, quality]) => {
+            const qualityClass = quality.stability > 0.7 ? 'good' : quality.stability > 0.4 ? 'fair' : 'poor';
+            html += `<li>${region}: <span class="quality-${qualityClass}">${(quality.stability * 100).toFixed(0)}%</span></li>`;
+        });
+        html += '</ul></div>';
+        
+        performanceDiv.innerHTML = html;
+    }
+    
     exportData() {
         if (this.fullHistory.length === 0) return;
         
@@ -1459,8 +1663,9 @@ class HeartRateMonitor {
             });
         });
         
-        // Hide export button
+        // Hide export button and performance analysis
         document.getElementById('exportData').style.display = 'none';
+        document.getElementById('performanceAnalysis').style.display = 'none';
     }
 }
 
