@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Heart Rate Monitor</title>
     <style>
+        * {
+            box-sizing: border-box;
+        }
+        
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             margin: 0;
@@ -25,8 +29,8 @@
         
         .main-layout {
             display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 30px;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+            gap: 20px;
             align-items: start;
         }
         
@@ -34,11 +38,17 @@
             background: #f8f9fa;
             border-radius: 8px;
             padding: 20px;
+            min-width: 0; /* Prevent grid blowout */
+            overflow: hidden;
         }
         
         @media (max-width: 1200px) {
             .main-layout {
                 grid-template-columns: 1fr;
+            }
+            
+            .container {
+                padding: 15px;
             }
         }
         
@@ -117,6 +127,10 @@
         .controls {
             text-align: center;
             margin: 20px 0;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 10px;
         }
         
         button {
@@ -127,8 +141,8 @@
             font-size: 16px;
             border-radius: 5px;
             cursor: pointer;
-            margin: 0 10px;
             transition: background 0.3s;
+            flex-shrink: 0;
         }
         
         button:hover {
@@ -225,6 +239,8 @@
             color: #555;
             display: inline-flex;
             align-items: center;
+            white-space: nowrap;
+            margin: 5px 10px;
         }
         
         label:hover {
