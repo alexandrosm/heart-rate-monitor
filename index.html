@@ -182,6 +182,23 @@
             margin: 5px 0;
             color: #555;
         }
+        
+        input[type="checkbox"] {
+            margin-right: 5px;
+            cursor: pointer;
+        }
+        
+        label {
+            cursor: pointer;
+            font-size: 14px;
+            color: #555;
+            display: inline-flex;
+            align-items: center;
+        }
+        
+        label:hover {
+            color: #333;
+        }
     </style>
 </head>
 <body>
@@ -206,6 +223,25 @@
         <div class="controls">
             <button id="startBtn">Start Monitoring</button>
             <button id="stopBtn" disabled>Stop Monitoring</button>
+        </div>
+        
+        <div class="controls" style="margin-top: 10px;">
+            <label style="margin-right: 20px;">
+                <input type="checkbox" id="showRegions" checked> Show Regions
+            </label>
+            <label style="margin-right: 20px;">
+                <input type="checkbox" id="showAlgorithms" checked> Show Algorithms
+            </label>
+            <label style="margin-right: 20px;">
+                <input type="checkbox" id="showHistogram" checked> Show Histogram
+            </label>
+            <label>
+                <input type="checkbox" id="showPulse" checked> Show Pulse
+            </label>
+        </div>
+        
+        <div class="controls" style="margin-top: 10px;">
+            <button id="toggleAll" style="font-size: 14px; padding: 8px 16px;">Toggle All Overlays</button>
         </div>
         
         <div class="status" id="status">Ready to start monitoring</div>

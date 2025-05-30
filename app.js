@@ -9,6 +9,12 @@ class HeartRateMonitor {
         this.heartRateDisplay = document.getElementById('heartRate');
         this.loading = document.getElementById('loading');
         
+        // Overlay toggles
+        this.showRegions = document.getElementById('showRegions');
+        this.showAlgorithms = document.getElementById('showAlgorithms');
+        this.showHistogram = document.getElementById('showHistogram');
+        this.showPulse = document.getElementById('showPulse');
+        
         this.isMonitoring = false;
         this.faceDetector = null;
         this.frameBuffer = [];
@@ -25,12 +31,38 @@ class HeartRateMonitor {
         this.detectionMissCount = 0;
         this.maxMissCount = 10; // Allow up to 10 frames without detection
         this.frameCount = 0;
-        this.detectionInterval = 3; // Only detect face every 3 frames for performance
+        this.detectionInterval = 5; // Only detect face every 5 frames for performance
         
         // Smoothing for measurements
         this.heartRateSmoothing = [];
         this.breathingRateSmoothing = [];
         this.smoothingWindow = 5;
+        
+        // Create offscreen canvas for double buffering
+        this.offscreenCanvas = document.createElement('canvas');
+        this.offscreenCtx = this.offscreenCanvas.getContext('2d');
+        
+        // Multi-region detection
+        this.regionBuffers = {
+            forehead: [],
+            leftCheek: [],
+            rightCheek: [],
+            nose: []
+        };
+        this.regionColors = {
+            forehead: '#00ff00',
+            leftCheek: '#ff00ff',
+            rightCheek: '#00ffff',
+            nose: '#ffff00'
+        };
+        
+        // Algorithm selection
+        this.algorithms = {
+            'FFT': this.estimateRateFFT.bind(this),
+            'PeakDetection': this.estimateRatePeakDetection.bind(this),
+            'Autocorrelation': this.estimateRateAutocorrelation.bind(this),
+            'Wavelet': this.estimateRateWavelet.bind(this)
+        };
         
         this.initializeEventListeners();
         this.initializeChart();
@@ -39,6 +71,14 @@ class HeartRateMonitor {
     initializeEventListeners() {
         this.startBtn.addEventListener('click', () => this.startMonitoring());
         this.stopBtn.addEventListener('click', () => this.stopMonitoring());
+        
+        // Toggle all overlays button
+        const toggleAllBtn = document.getElementById('toggleAll');
+        toggleAllBtn.addEventListener('click', () => {
+            const checkboxes = [this.showRegions, this.showAlgorithms, this.showHistogram, this.showPulse];
+            const anyChecked = checkboxes.some(cb => cb.checked);
+            checkboxes.forEach(cb => cb.checked = !anyChecked);
+        });
     }
     
     initializeChart() {
@@ -116,6 +156,10 @@ class HeartRateMonitor {
             this.canvas.style.width = this.video.clientWidth + 'px';
             this.canvas.style.height = this.video.clientHeight + 'px';
             
+            // Set offscreen canvas size
+            this.offscreenCanvas.width = this.canvas.width;
+            this.offscreenCanvas.height = this.canvas.height;
+            
             this.isMonitoring = true;
             this.stopBtn.disabled = false;
             this.status.textContent = 'Monitoring heart rate...';
@@ -139,9 +183,6 @@ class HeartRateMonitor {
     
     async processFrames() {
         if (!this.isMonitoring) return;
-        
-        // Clear canvas
-        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         
         // Only detect face every few frames for performance
         let detection = null;
@@ -169,89 +210,105 @@ class HeartRateMonitor {
             detection = this.lastDetection;
         }
         
+        // Only clear and redraw if we have a detection
         if (detection) {
+            // Clear canvas only when drawing
+            this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
             this.loading.style.display = 'none';
             
-            // Get forehead region (area above eyebrows)
+            // Get facial landmarks
             const landmarks = detection.landmarks;
             const leftEyebrow = landmarks.getLeftEyeBrow();
             const rightEyebrow = landmarks.getRightEyeBrow();
+            const nose = landmarks.getNose();
+            const leftEye = landmarks.getLeftEye();
+            const rightEye = landmarks.getRightEye();
+            const jawline = landmarks.getJawOutline();
             
-            // Calculate forehead region
-            const foreheadTop = Math.min(...leftEyebrow.concat(rightEyebrow).map(p => p.y)) - 30;
-            const foreheadBottom = Math.min(...leftEyebrow.concat(rightEyebrow).map(p => p.y));
-            const foreheadLeft = leftEyebrow[0].x;
-            const foreheadRight = rightEyebrow[rightEyebrow.length - 1].x;
-            const foreheadWidth = foreheadRight - foreheadLeft;
-            const foreheadHeight = foreheadBottom - foreheadTop;
+            // Define multiple regions
+            const regions = {
+                forehead: {
+                    x: leftEyebrow[0].x,
+                    y: Math.min(...leftEyebrow.concat(rightEyebrow).map(p => p.y)) - 30,
+                    width: rightEyebrow[rightEyebrow.length - 1].x - leftEyebrow[0].x,
+                    height: 30
+                },
+                leftCheek: {
+                    x: jawline[2].x,
+                    y: nose[3].y,
+                    width: leftEye[0].x - jawline[2].x - 10,
+                    height: jawline[4].y - nose[3].y
+                },
+                rightCheek: {
+                    x: rightEye[3].x + 10,
+                    y: nose[3].y,
+                    width: jawline[14].x - rightEye[3].x - 10,
+                    height: jawline[12].y - nose[3].y
+                },
+                nose: {
+                    x: nose[0].x - 15,
+                    y: nose[0].y,
+                    width: 30,
+                    height: nose[6].y - nose[0].y
+                }
+            };
             
-            // Calculate pulse effect based on current heart rate
-            const pulseIntensity = this.currentHeartRate > 0 ? 
-                0.02 * (1 + Math.sin((Date.now() * this.currentHeartRate / 60000) * 2 * Math.PI)) : 0;
-            
-            // Draw pulsating overlay on entire video
-            if (this.currentHeartRate > 0) {
-                this.ctx.fillStyle = `rgba(255, 0, 0, ${pulseIntensity})`;
-                this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-            }
-            
-            // Remove debug background - no longer needed
-            
-            // Draw forehead region overlay with enhanced visibility
-            this.ctx.strokeStyle = '#00ff00';
-            this.ctx.lineWidth = 3;
-            this.ctx.strokeRect(foreheadLeft, foreheadTop, foreheadWidth, foreheadHeight);
-            
-            // Draw face detection box
-            this.ctx.strokeStyle = '#ffff00';
-            this.ctx.lineWidth = 2;
-            const box = detection.detection.box;
-            this.ctx.strokeRect(box.x, box.y, box.width, box.height);
-            
-            // Draw enhanced pulse visualization around detection area
-            if (this.currentHeartRate > 0) {
-                const pulsePhase = (Date.now() % (60000 / this.currentHeartRate)) / (60000 / this.currentHeartRate);
-                const expansion = 5 * Math.sin(pulsePhase * 2 * Math.PI);
-                
-                this.ctx.strokeStyle = `rgba(231, 76, 60, ${0.5 + 0.5 * Math.sin(pulsePhase * 2 * Math.PI)})`;
-                this.ctx.lineWidth = 2 + expansion / 2;
-                this.ctx.strokeRect(
-                    foreheadLeft - expansion,
-                    foreheadTop - expansion,
-                    foreheadWidth + expansion * 2,
-                    foreheadHeight + expansion * 2
-                );
-            }
-            
-            // Draw label
-            this.ctx.fillStyle = '#3498db';
-            this.ctx.font = '14px Arial';
-            this.ctx.fillText('Detection Area', foreheadLeft, foreheadTop - 5);
-            
-            // Get forehead region for analysis
+            // Process each region
             const tempCanvas = document.createElement('canvas');
             const tempCtx = tempCanvas.getContext('2d');
-            tempCanvas.width = foreheadWidth;
-            tempCanvas.height = foreheadHeight;
-            tempCtx.drawImage(
-                this.video,
-                foreheadLeft, foreheadTop, foreheadWidth, foreheadHeight,
-                0, 0, foreheadWidth, foreheadHeight
-            );
             
-            // Get average green channel value
-            const imageData = tempCtx.getImageData(0, 0, foreheadWidth, foreheadHeight);
-            const greenValue = this.getAverageGreenChannel(imageData);
+            for (const [regionName, region] of Object.entries(regions)) {
+                // Validate region bounds
+                if (region.width > 0 && region.height > 0 && 
+                    region.x >= 0 && region.y >= 0 &&
+                    region.x + region.width <= this.video.videoWidth &&
+                    region.y + region.height <= this.video.videoHeight) {
+                    
+                    // Draw region overlay if enabled
+                    if (this.showRegions.checked) {
+                        this.ctx.strokeStyle = this.regionColors[regionName];
+                        this.ctx.lineWidth = 2;
+                        this.ctx.strokeRect(region.x, region.y, region.width, region.height);
+                        
+                        // Draw region label
+                        this.ctx.fillStyle = this.regionColors[regionName];
+                        this.ctx.font = '12px Arial';
+                        this.ctx.fillText(regionName, region.x, region.y - 5);
+                    }
+                    
+                    // Extract region for analysis
+                    tempCanvas.width = region.width;
+                    tempCanvas.height = region.height;
+                    tempCtx.drawImage(
+                        this.video,
+                        region.x, region.y, region.width, region.height,
+                        0, 0, region.width, region.height
+                    );
+                    
+                    // Get signal value
+                    const imageData = tempCtx.getImageData(0, 0, region.width, region.height);
+                    const signalValue = this.getAverageGreenChannel(imageData);
+                    
+                    // Add to region buffer
+                    this.regionBuffers[regionName].push({
+                        value: signalValue,
+                        timestamp: Date.now()
+                    });
+                    
+                    // Keep buffer size limited
+                    if (this.regionBuffers[regionName].length > this.bufferSize) {
+                        this.regionBuffers[regionName].shift();
+                    }
+                }
+            }
             
-            // Add to buffer
-            this.frameBuffer.push({
-                value: greenValue,
-                timestamp: Date.now()
-            });
-            
-            // Keep buffer size limited
-            if (this.frameBuffer.length > this.bufferSize) {
-                this.frameBuffer.shift();
+            // Use forehead as primary signal for backward compatibility
+            if (this.regionBuffers.forehead.length > 0) {
+                const latestForehead = this.regionBuffers.forehead[this.regionBuffers.forehead.length - 1];
+                this.frameBuffer.push(latestForehead);
+                if (this.frameBuffer.length > this.bufferSize) {
+                    this.frameBuffer.shift();
+                }
             }
             
             // Draw signal visualization
@@ -264,7 +321,7 @@ class HeartRateMonitor {
             
             // Calculate heart rate if we have enough data
             if (this.frameBuffer.length >= this.bufferSize / 2) {
-                const rates = this.calculateVitalSigns();
+                const rates = this.calculateMultiRegionVitalSigns();
                 if (rates.heartRate > 0) {
                     // Smooth the measurements
                     this.heartRateSmoothing.push(rates.heartRate);
@@ -287,7 +344,8 @@ class HeartRateMonitor {
                     this.currentHeartRate = smoothedHR;
                     this.currentBreathingRate = smoothedBR;
                     this.updateHeartRateDisplay(smoothedHR);
-                    this.status.textContent = `HR: ${smoothedHR} BPM | Breathing: ${smoothedBR} BPM`;
+                    const confidence = rates.confidence || 0;
+                    this.status.textContent = `HR: ${smoothedHR} BPM | Breathing: ${smoothedBR} BPM | Confidence: ${confidence}%`;
                     
                     // Draw vitals on video
                     this.ctx.fillStyle = '#e74c3c';
@@ -299,32 +357,33 @@ class HeartRateMonitor {
                     this.ctx.font = 'bold 20px Arial';
                     this.ctx.fillText(`Breathing: ${smoothedBR}/min`, 20, 70);
                     
-                    // Draw enhanced pulse indicator
-                    const pulsePhase = (Date.now() % (60000 / rates.heartRate)) / (60000 / rates.heartRate);
-                    const pulseSize = 15 + Math.sin(pulsePhase * 2 * Math.PI) * 8;
+                    // Draw simple pulse indicator if enabled
+                    if (this.showPulse.checked) {
+                        const pulsePhase = (Date.now() % (60000 / smoothedHR)) / (60000 / smoothedHR);
+                        const pulseSize = 12 + Math.sin(pulsePhase * 2 * Math.PI) * 4;
+                        
+                        this.ctx.fillStyle = `rgba(231, 76, 60, ${0.6 + Math.sin(pulsePhase * 2 * Math.PI) * 0.4})`;
+                        this.ctx.beginPath();
+                        this.ctx.arc(180, 40, pulseSize, 0, 2 * Math.PI);
+                        this.ctx.fill();
+                    }
                     
-                    // Outer glow
-                    const gradient = this.ctx.createRadialGradient(200, 40, 0, 200, 40, pulseSize * 2);
-                    gradient.addColorStop(0, `rgba(231, 76, 60, ${0.8 * Math.sin(pulsePhase * 2 * Math.PI)})`);
-                    gradient.addColorStop(1, 'rgba(231, 76, 60, 0)');
-                    this.ctx.fillStyle = gradient;
-                    this.ctx.beginPath();
-                    this.ctx.arc(200, 40, pulseSize * 2, 0, 2 * Math.PI);
-                    this.ctx.fill();
-                    
-                    // Inner circle
-                    this.ctx.fillStyle = `rgba(231, 76, 60, ${0.5 + Math.sin(pulsePhase * 2 * Math.PI) * 0.5})`;
-                    this.ctx.beginPath();
-                    this.ctx.arc(200, 40, pulseSize, 0, 2 * Math.PI);
-                    this.ctx.fill();
+                    // Draw confidence indicator
+                    this.ctx.font = '14px Arial';
+                    this.ctx.fillStyle = confidence > 70 ? '#2ecc71' : confidence > 40 ? '#f39c12' : '#e74c3c';
+                    this.ctx.fillText(`Confidence: ${confidence}%`, 20, 95);
                 }
             }
         } else {
+            // Clear canvas when no face detected
+            this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
             this.status.textContent = 'No face detected. Please position your face in the camera view.';
         }
         
-        // Continue processing
-        requestAnimationFrame(() => this.processFrames());
+        // Continue processing with throttling
+        setTimeout(() => {
+            requestAnimationFrame(() => this.processFrames());
+        }, 1000 / this.samplingRate); // Maintain consistent frame rate
     }
     
     drawSignalVisualization() {
@@ -394,6 +453,171 @@ class HeartRateMonitor {
         
         // Chrominance signal (more robust to lighting changes)
         return avgG - 0.3 * avgR - 0.3 * avgB;
+    }
+    
+    calculateMultiRegionVitalSigns() {
+        // Check if we have enough data in multiple regions
+        const validRegions = Object.entries(this.regionBuffers)
+            .filter(([name, buffer]) => buffer.length >= this.bufferSize / 2);
+        
+        if (validRegions.length === 0) {
+            return { heartRate: 0, breathingRate: 0, confidence: 0 };
+        }
+        
+        // Calculate heart rate for each region using multiple algorithms
+        const allResults = [];
+        const algorithmResults = {};
+        
+        for (const [regionName, buffer] of validRegions) {
+            const signal = buffer.map(frame => frame.value);
+            const detrendedSignal = this.detrend(signal);
+            
+            // Get heart rate for this region using each algorithm
+            const heartSignal = this.bandpassFilter(detrendedSignal, 0.75, 4, this.samplingRate);
+            
+            for (const [algoName, algoFunc] of Object.entries(this.algorithms)) {
+                const heartRate = algoFunc(heartSignal, this.samplingRate, 0.75, 4);
+                
+                if (heartRate > 0) {
+                    allResults.push({
+                        region: regionName,
+                        algorithm: algoName,
+                        heartRate: heartRate
+                    });
+                    
+                    // Track results by algorithm
+                    if (!algorithmResults[algoName]) {
+                        algorithmResults[algoName] = [];
+                    }
+                    algorithmResults[algoName].push(heartRate);
+                }
+            }
+        }
+        
+        if (allResults.length === 0) {
+            return { heartRate: 0, breathingRate: 0, confidence: 0 };
+        }
+        
+        // Calculate consensus using all results
+        const allHeartRates = allResults.map(r => r.heartRate).sort((a, b) => a - b);
+        const medianHR = allHeartRates[Math.floor(allHeartRates.length / 2)];
+        
+        // Calculate breathing rate (simplified - using FFT only)
+        const breathingRate = this.calculateBreathingRate(validRegions[0][1]);
+        
+        // Calculate confidence based on agreement
+        const hrStdDev = this.calculateStdDev(allHeartRates);
+        const confidence = Math.max(0, Math.min(100, 100 - hrStdDev));
+        
+        // Show algorithm comparison
+        this.drawAlgorithmResults(algorithmResults, medianHR);
+        
+        return {
+            heartRate: medianHR,
+            breathingRate: breathingRate,
+            confidence: Math.round(confidence)
+        };
+    }
+    
+    calculateStdDev(values) {
+        const mean = values.reduce((a, b) => a + b, 0) / values.length;
+        const squaredDiffs = values.map(v => Math.pow(v - mean, 2));
+        const variance = squaredDiffs.reduce((a, b) => a + b, 0) / values.length;
+        return Math.sqrt(variance);
+    }
+    
+    calculateBreathingRate(buffer) {
+        if (!buffer || buffer.length < this.bufferSize / 2) return 0;
+        const signal = buffer.map(frame => frame.value);
+        const detrendedSignal = this.detrend(signal);
+        const breathingSignal = this.bandpassFilter(detrendedSignal, 0.1, 0.5, this.samplingRate);
+        return this.estimateRateFFT(breathingSignal, this.samplingRate, 0.1, 0.5);
+    }
+    
+    drawAlgorithmResults(algorithmResults, consensusHR) {
+        if (!this.showAlgorithms.checked) return;
+        
+        // Draw algorithm comparison
+        let yPos = 120;
+        this.ctx.font = '11px Arial';
+        
+        // Title
+        this.ctx.fillStyle = '#ffffff';
+        this.ctx.fillText('Algorithm Results:', 20, yPos);
+        yPos += 15;
+        
+        for (const [algoName, results] of Object.entries(algorithmResults)) {
+            if (results.length > 0) {
+                const median = results.sort((a, b) => a - b)[Math.floor(results.length / 2)];
+                const deviation = Math.abs(median - consensusHR);
+                const isGood = deviation < 5;
+                
+                this.ctx.fillStyle = isGood ? '#2ecc71' : '#e74c3c';
+                this.ctx.fillText(
+                    `${algoName}: ${median} BPM (${results.length} samples) ${isGood ? '✓' : '⚠'}`,
+                    20, yPos
+                );
+                yPos += 13;
+            }
+        }
+        
+        // Draw mini histogram of all results
+        if (this.showHistogram.checked) {
+            this.drawMiniHistogram(Object.values(algorithmResults).flat(), consensusHR);
+        }
+    }
+    
+    drawMiniHistogram(values, consensus) {
+        if (values.length === 0) return;
+        
+        const histX = this.canvas.width - 220;
+        const histY = 120;
+        const histWidth = 200;
+        const histHeight = 80;
+        
+        // Background
+        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+        this.ctx.fillRect(histX, histY, histWidth, histHeight);
+        
+        // Create histogram bins
+        const min = Math.min(...values);
+        const max = Math.max(...values);
+        const range = max - min || 1;
+        const binCount = Math.min(10, values.length);
+        const binWidth = range / binCount;
+        
+        const bins = new Array(binCount).fill(0);
+        values.forEach(val => {
+            const binIndex = Math.min(Math.floor((val - min) / binWidth), binCount - 1);
+            bins[binIndex]++;
+        });
+        
+        const maxCount = Math.max(...bins);
+        
+        // Draw bins
+        this.ctx.fillStyle = '#3498db';
+        bins.forEach((count, i) => {
+            const x = histX + (i / binCount) * histWidth;
+            const barWidth = histWidth / binCount - 2;
+            const barHeight = (count / maxCount) * histHeight * 0.8;
+            const y = histY + histHeight - barHeight - 10;
+            
+            this.ctx.fillRect(x, y, barWidth, barHeight);
+        });
+        
+        // Draw consensus line
+        const consensusX = histX + ((consensus - min) / range) * histWidth;
+        this.ctx.strokeStyle = '#e74c3c';
+        this.ctx.lineWidth = 2;
+        this.ctx.beginPath();
+        this.ctx.moveTo(consensusX, histY);
+        this.ctx.lineTo(consensusX, histY + histHeight);
+        this.ctx.stroke();
+        
+        // Label
+        this.ctx.fillStyle = '#fff';
+        this.ctx.font = '10px Arial';
+        this.ctx.fillText('Distribution', histX + 5, histY + 12);
     }
     
     calculateVitalSigns() {
@@ -507,6 +731,134 @@ class HeartRateMonitor {
         }
         
         return filtered;
+    }
+    
+    estimateRatePeakDetection(signal, sampleRate, minFreq, maxFreq) {
+        // Find peaks in the signal
+        const peaks = [];
+        const minDistance = Math.floor(sampleRate / maxFreq); // Minimum samples between peaks
+        const threshold = this.calculateDynamicThreshold(signal);
+        
+        for (let i = 1; i < signal.length - 1; i++) {
+            // Check if this is a peak
+            if (signal[i] > signal[i-1] && signal[i] > signal[i+1] && signal[i] > threshold) {
+                // Check minimum distance from last peak
+                if (peaks.length === 0 || i - peaks[peaks.length - 1] >= minDistance) {
+                    peaks.push(i);
+                }
+            }
+        }
+        
+        if (peaks.length < 2) return 0;
+        
+        // Calculate average interval between peaks
+        let totalInterval = 0;
+        for (let i = 1; i < peaks.length; i++) {
+            totalInterval += peaks[i] - peaks[i-1];
+        }
+        const avgInterval = totalInterval / (peaks.length - 1);
+        const freq = sampleRate / avgInterval;
+        const rate = freq * 60;
+        
+        // Validate range
+        if (rate >= minFreq * 60 && rate <= maxFreq * 60) {
+            return Math.round(rate);
+        }
+        return 0;
+    }
+    
+    calculateDynamicThreshold(signal) {
+        const mean = signal.reduce((a, b) => a + b, 0) / signal.length;
+        const stdDev = Math.sqrt(
+            signal.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / signal.length
+        );
+        return mean + stdDev * 0.5;
+    }
+    
+    estimateRateAutocorrelation(signal, sampleRate, minFreq, maxFreq) {
+        // Autocorrelation-based frequency detection
+        const minLag = Math.floor(sampleRate / maxFreq);
+        const maxLag = Math.floor(sampleRate / minFreq);
+        
+        const autocorr = [];
+        for (let lag = minLag; lag <= maxLag && lag < signal.length; lag++) {
+            let sum = 0;
+            for (let i = 0; i < signal.length - lag; i++) {
+                sum += signal[i] * signal[i + lag];
+            }
+            autocorr.push({ lag: lag, value: sum });
+        }
+        
+        // Find the peak in autocorrelation
+        let maxCorr = autocorr[0];
+        for (const corr of autocorr) {
+            if (corr.value > maxCorr.value) {
+                maxCorr = corr;
+            }
+        }
+        
+        const freq = sampleRate / maxCorr.lag;
+        const rate = freq * 60;
+        
+        if (rate >= minFreq * 60 && rate <= maxFreq * 60) {
+            return Math.round(rate);
+        }
+        return 0;
+    }
+    
+    estimateRateWavelet(signal, sampleRate, minFreq, maxFreq) {
+        // Simplified continuous wavelet transform using Morlet wavelet
+        const scales = [];
+        const freqs = [];
+        
+        // Generate scales corresponding to frequencies of interest
+        for (let freq = minFreq; freq <= maxFreq; freq += 0.1) {
+            const scale = sampleRate / (2 * freq);
+            scales.push(scale);
+            freqs.push(freq);
+        }
+        
+        const cwt = [];
+        for (let i = 0; i < scales.length; i++) {
+            const scale = scales[i];
+            const waveletCoeffs = this.morletWaveletTransform(signal, scale);
+            const power = waveletCoeffs.reduce((sum, coeff) => sum + coeff * coeff, 0);
+            cwt.push({ freq: freqs[i], power: power });
+        }
+        
+        // Find frequency with maximum power
+        let maxPower = cwt[0];
+        for (const point of cwt) {
+            if (point.power > maxPower.power) {
+                maxPower = point;
+            }
+        }
+        
+        const rate = maxPower.freq * 60;
+        if (rate >= minFreq * 60 && rate <= maxFreq * 60) {
+            return Math.round(rate);
+        }
+        return 0;
+    }
+    
+    morletWaveletTransform(signal, scale) {
+        const coeffs = [];
+        const omega0 = 6; // Morlet wavelet parameter
+        
+        for (let n = 0; n < signal.length; n++) {
+            let real = 0, imag = 0;
+            
+            for (let k = 0; k < signal.length; k++) {
+                const t = (k - n) / scale;
+                const gaussian = Math.exp(-t * t / 2);
+                const sinusoid = Math.cos(omega0 * t);
+                real += signal[k] * gaussian * sinusoid / Math.sqrt(scale);
+            }
+            
+            coeffs.push(Math.sqrt(real * real));
+        }
+        
+        return coeffs;
     }
     
     estimateRateFFT(signal, sampleRate, minFreq, maxFreq) {
