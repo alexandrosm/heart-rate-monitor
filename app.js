@@ -14,6 +14,7 @@ class HeartRateMonitor {
         this.showAlgorithms = document.getElementById('showAlgorithms');
         this.showHistogram = document.getElementById('showHistogram');
         this.showPulse = document.getElementById('showPulse');
+        this.showAlgorithmChart = document.getElementById('showAlgorithmChart');
         
         this.isMonitoring = false;
         this.faceDetector = null;
@@ -23,8 +24,15 @@ class HeartRateMonitor {
         this.heartRateHistory = [];
         this.breathingRateHistory = [];
         this.fullHistory = [];
+        this.algorithmHistory = {
+            FFT: [],
+            PeakDetection: [],
+            Autocorrelation: [],
+            Wavelet: []
+        };
         this.chart = null;
         this.fullHistoryChart = null;
+        this.algorithmComparisonChart = null;
         this.sessionStartTime = null;
         this.currentHeartRate = 0;
         this.currentBreathingRate = 0;
@@ -86,6 +94,15 @@ class HeartRateMonitor {
         // Export data button
         const exportBtn = document.getElementById('exportData');
         exportBtn.addEventListener('click', () => this.exportData());
+        
+        // Algorithm chart toggle
+        this.showAlgorithmChart.addEventListener('change', (e) => {
+            const container = document.getElementById('algorithmChartContainer');
+            container.style.display = e.target.checked ? 'block' : 'none';
+            if (e.target.checked && this.algorithmComparisonChart) {
+                this.updateAlgorithmComparisonChart();
+            }
+        });
     }
     
     initializeChart() {
@@ -217,6 +234,98 @@ class HeartRateMonitor {
                 }
             }
         });
+        
+        // Initialize algorithm comparison chart
+        const algoCtx = document.getElementById('algorithmComparisonChart').getContext('2d');
+        this.algorithmComparisonChart = new Chart(algoCtx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [
+                    {
+                        label: 'FFT',
+                        data: [],
+                        borderColor: '#e74c3c',
+                        backgroundColor: 'rgba(231, 76, 60, 0.1)',
+                        borderWidth: 2,
+                        tension: 0.1,
+                        pointRadius: 0
+                    },
+                    {
+                        label: 'Peak Detection',
+                        data: [],
+                        borderColor: '#3498db',
+                        backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                        borderWidth: 2,
+                        tension: 0.1,
+                        pointRadius: 0
+                    },
+                    {
+                        label: 'Autocorrelation',
+                        data: [],
+                        borderColor: '#2ecc71',
+                        backgroundColor: 'rgba(46, 204, 113, 0.1)',
+                        borderWidth: 2,
+                        tension: 0.1,
+                        pointRadius: 0
+                    },
+                    {
+                        label: 'Wavelet',
+                        data: [],
+                        borderColor: '#f39c12',
+                        backgroundColor: 'rgba(243, 156, 18, 0.1)',
+                        borderWidth: 2,
+                        tension: 0.1,
+                        pointRadius: 0
+                    },
+                    {
+                        label: 'Consensus',
+                        data: [],
+                        borderColor: '#9b59b6',
+                        backgroundColor: 'rgba(155, 89, 182, 0.1)',
+                        borderWidth: 3,
+                        borderDash: [5, 5],
+                        tension: 0.1,
+                        pointRadius: 0
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    mode: 'index',
+                    intersect: false,
+                },
+                scales: {
+                    y: {
+                        beginAtZero: false,
+                        suggestedMin: 50,
+                        suggestedMax: 120,
+                        title: {
+                            display: true,
+                            text: 'Heart Rate (BPM)'
+                        }
+                    },
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Time (seconds from start)'
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top'
+                    },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                    }
+                }
+            }
+        });
     }
     
     async startMonitoring() {
@@ -261,6 +370,11 @@ class HeartRateMonitor {
             // Track session start time
             this.sessionStartTime = Date.now();
             this.fullHistory = [];
+            
+            // Reset algorithm history
+            Object.keys(this.algorithmHistory).forEach(key => {
+                this.algorithmHistory[key] = [];
+            });
             
             // Start processing frames
             this.processFrames();
@@ -614,6 +728,27 @@ class HeartRateMonitor {
         // Calculate confidence based on agreement
         const hrStdDev = this.calculateStdDev(allHeartRates);
         const confidence = Math.max(0, Math.min(100, 100 - hrStdDev));
+        
+        // Store algorithm results for chart
+        if (this.sessionStartTime) {
+            const currentTime = Math.floor((Date.now() - this.sessionStartTime) / 1000);
+            
+            // Store individual algorithm results
+            for (const [algoName, results] of Object.entries(algorithmResults)) {
+                if (results.length > 0) {
+                    const algoMedian = results.sort((a, b) => a - b)[Math.floor(results.length / 2)];
+                    this.algorithmHistory[algoName].push({
+                        time: currentTime,
+                        value: algoMedian
+                    });
+                }
+            }
+            
+            // Update algorithm comparison chart if visible
+            if (this.showAlgorithmChart.checked) {
+                this.updateAlgorithmComparisonChart();
+            }
+        }
         
         // Show algorithm comparison
         this.drawAlgorithmResults(algorithmResults, medianHR);
@@ -1126,6 +1261,52 @@ class HeartRateMonitor {
         this.fullHistoryChart.update();
     }
     
+    updateAlgorithmComparisonChart() {
+        if (!this.algorithmComparisonChart) return;
+        
+        // Get all time points
+        const allTimes = new Set();
+        Object.values(this.algorithmHistory).forEach(history => {
+            history.forEach(point => allTimes.add(point.time));
+        });
+        const times = Array.from(allTimes).sort((a, b) => a - b);
+        
+        if (times.length === 0) return;
+        
+        // Prepare data for each algorithm
+        const datasets = [];
+        const algorithmNames = ['FFT', 'PeakDetection', 'Autocorrelation', 'Wavelet'];
+        
+        algorithmNames.forEach((algoName, index) => {
+            const history = this.algorithmHistory[algoName];
+            const data = times.map(time => {
+                const point = history.find(p => p.time === time);
+                return point ? point.value : null;
+            });
+            
+            this.algorithmComparisonChart.data.datasets[index].data = data;
+        });
+        
+        // Add consensus line (from full history)
+        const consensusData = times.map(time => {
+            const point = this.fullHistory.find(p => p.time === time);
+            return point ? point.heartRate : null;
+        });
+        this.algorithmComparisonChart.data.datasets[4].data = consensusData;
+        
+        // Update labels
+        this.algorithmComparisonChart.data.labels = times;
+        
+        // Update x-axis for longer sessions
+        const duration = times[times.length - 1] || 0;
+        if (duration > 300) { // More than 5 minutes
+            this.algorithmComparisonChart.options.scales.x.title.text = 'Time (minutes from start)';
+            this.algorithmComparisonChart.data.labels = times.map(t => (t / 60).toFixed(1));
+        }
+        
+        this.algorithmComparisonChart.update();
+    }
+    
     exportData() {
         if (this.fullHistory.length === 0) return;
         
@@ -1178,6 +1359,20 @@ class HeartRateMonitor {
             this.fullHistoryChart.data.datasets[1].data = [];
             this.fullHistoryChart.update();
         }
+        
+        // Clear algorithm comparison chart
+        if (this.algorithmComparisonChart) {
+            this.algorithmComparisonChart.data.labels = [];
+            this.algorithmComparisonChart.data.datasets.forEach(dataset => {
+                dataset.data = [];
+            });
+            this.algorithmComparisonChart.update();
+        }
+        
+        // Clear algorithm history
+        Object.keys(this.algorithmHistory).forEach(key => {
+            this.algorithmHistory[key] = [];
+        });
         
         // Hide export button
         document.getElementById('exportData').style.display = 'none';

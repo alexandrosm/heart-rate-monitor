@@ -282,6 +282,12 @@
                 </div>
                 
                 <div class="controls" style="margin-top: 10px;">
+                    <label>
+                        <input type="checkbox" id="showAlgorithmChart"> Show Algorithm Comparison Chart
+                    </label>
+                </div>
+                
+                <div class="controls" style="margin-top: 10px;">
                     <button id="toggleAll" style="font-size: 14px; padding: 8px 16px;">Toggle All Overlays</button>
                 </div>
                 
@@ -336,6 +342,11 @@
                         <button id="exportData" style="font-size: 12px; padding: 4px 8px; margin-left: 10px; display: none;">Export CSV</button>
                     </h3>
                     <canvas id="fullHistoryChart"></canvas>
+                </div>
+                
+                <div class="chart-container" id="algorithmChartContainer" style="margin-top: 20px; height: 300px; display: none;">
+                    <h3 style="text-align: center; margin-bottom: 10px; color: #333;">Algorithm Comparison</h3>
+                    <canvas id="algorithmComparisonChart"></canvas>
                 </div>
             </div>
         </div>
