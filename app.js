@@ -897,6 +897,7 @@ class HeartRateMonitor {
         const breathingRate = this.calculateBreathingRate(validRegions[0][1]);
         
         // Calculate confidence based on agreement
+        const allHeartRates = allResults.map(r => r.heartRate);
         const hrStdDev = this.calculateStdDev(allHeartRates);
         const confidence = Math.max(0, Math.min(100, 100 - hrStdDev));
         
