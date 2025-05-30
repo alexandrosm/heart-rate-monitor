@@ -12,50 +12,79 @@
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             margin: 0;
-            padding: 20px;
+            padding: 0;
             background: #f0f0f0;
-            min-height: 100vh;
+            height: 100vh;
+            overflow: hidden;
         }
         
         .container {
             background: white;
-            border-radius: 10px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            padding: 20px;
-            max-width: 1400px;
-            width: 100%;
-            margin: 0 auto;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            max-width: 100%;
+            margin: 0;
         }
         
         .main-layout {
             display: grid;
             grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-            gap: 20px;
-            align-items: start;
+            gap: 0;
+            flex: 1;
+            overflow: hidden;
+            height: calc(100vh - 80px); /* Account for header */
         }
         
         .video-section, .stats-section {
             background: #f8f9fa;
-            border-radius: 8px;
             padding: 20px;
             min-width: 0; /* Prevent grid blowout */
-            overflow: hidden;
+            overflow-y: auto;
+            overflow-x: hidden;
+            height: 100%;
+        }
+        
+        .video-section {
+            border-right: 1px solid #e0e0e0;
         }
         
         @media (max-width: 1200px) {
-            .main-layout {
-                grid-template-columns: 1fr;
+            body {
+                height: auto;
+                overflow: auto;
             }
             
             .container {
-                padding: 15px;
+                height: auto;
+                min-height: 100vh;
+            }
+            
+            .main-layout {
+                grid-template-columns: 1fr;
+                height: auto;
+            }
+            
+            .video-section, .stats-section {
+                height: auto;
+                overflow-y: visible;
+            }
+            
+            .video-section {
+                border-right: none;
+                border-bottom: 1px solid #e0e0e0;
             }
         }
         
         h1 {
             text-align: center;
             color: #333;
-            margin-bottom: 30px;
+            margin: 0;
+            padding: 20px;
+            background: white;
+            border-bottom: 1px solid #e0e0e0;
+            flex-shrink: 0;
         }
         
         .video-container {
@@ -245,6 +274,28 @@
         
         label:hover {
             color: #333;
+        }
+        
+        /* Custom scrollbar styling */
+        .video-section::-webkit-scrollbar,
+        .stats-section::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        .video-section::-webkit-scrollbar-track,
+        .stats-section::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        
+        .video-section::-webkit-scrollbar-thumb,
+        .stats-section::-webkit-scrollbar-thumb {
+            background: #c1c1c1;
+            border-radius: 4px;
+        }
+        
+        .video-section::-webkit-scrollbar-thumb:hover,
+        .stats-section::-webkit-scrollbar-thumb:hover {
+            background: #a0a0a0;
         }
     </style>
 </head>
