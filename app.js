@@ -54,6 +54,12 @@ class HeartRateMonitor {
                 PeakDetection: [],
                 Autocorrelation: [],
                 Wavelet: []
+            },
+            wholeFace: {
+                FFT: [],
+                PeakDetection: [],
+                Autocorrelation: [],
+                Wavelet: []
             }
         };
         this.chart = null;
@@ -69,7 +75,8 @@ class HeartRateMonitor {
             forehead: [],
             leftUnderEye: [],
             rightUnderEye: [],
-            nose: []
+            nose: [],
+            wholeFace: []
         };
         
         // Performance tracking
@@ -78,13 +85,15 @@ class HeartRateMonitor {
             forehead: { FFT: [], PeakDetection: [], Autocorrelation: [], Wavelet: [] },
             leftUnderEye: { FFT: [], PeakDetection: [], Autocorrelation: [], Wavelet: [] },
             rightUnderEye: { FFT: [], PeakDetection: [], Autocorrelation: [], Wavelet: [] },
-            nose: { FFT: [], PeakDetection: [], Autocorrelation: [], Wavelet: [] }
+            nose: { FFT: [], PeakDetection: [], Autocorrelation: [], Wavelet: [] },
+            wholeFace: { FFT: [], PeakDetection: [], Autocorrelation: [], Wavelet: [] }
         };
         this.regionSignalQuality = {
             forehead: { snr: 0, stability: 0 },
             leftUnderEye: { snr: 0, stability: 0 },
             rightUnderEye: { snr: 0, stability: 0 },
-            nose: { snr: 0, stability: 0 }
+            nose: { snr: 0, stability: 0 },
+            wholeFace: { snr: 0, stability: 0 }
         };
         
         // Face detection stability
@@ -108,13 +117,15 @@ class HeartRateMonitor {
             forehead: [],
             leftUnderEye: [],
             rightUnderEye: [],
-            nose: []
+            nose: [],
+            wholeFace: []
         };
         this.regionColors = {
             forehead: '#00ff00',
             leftUnderEye: '#ff00ff',
             rightUnderEye: '#00ffff',
-            nose: '#ffff00'
+            nose: '#ffff00',
+            wholeFace: '#ff0000'
         };
         
         // Algorithm selection
@@ -329,6 +340,16 @@ class HeartRateMonitor {
                         pointRadius: 0
                     },
                     {
+                        label: 'Whole Face',
+                        data: [],
+                        borderColor: '#e74c3c',
+                        backgroundColor: 'rgba(231, 76, 60, 0.1)',
+                        borderWidth: 2,
+                        borderDash: [3, 3],
+                        tension: 0.1,
+                        pointRadius: 0
+                    },
+                    {
                         label: 'Overall Consensus',
                         data: [],
                         borderColor: '#9b59b6',
@@ -379,7 +400,7 @@ class HeartRateMonitor {
         
         // Initialize algorithm comparison charts for each region
         this.algorithmCharts = {};
-        const regions = ['all', 'forehead', 'leftUnderEye', 'rightUnderEye', 'nose'];
+        const regions = ['all', 'forehead', 'leftUnderEye', 'rightUnderEye', 'nose', 'wholeFace'];
         
         regions.forEach(region => {
             const chartElement = document.getElementById(`algorithmChart_${region}`);
@@ -631,6 +652,15 @@ class HeartRateMonitor {
                     y: Math.max(0, nose[0].y - 10),  // Start from top of nose
                     width: Math.min(40, videoWidth - (Math.min(...nose.map(p => p.x)) - 20)),
                     height: Math.min(nose[nose.length - 1].y - nose[0].y + 20, videoHeight - (nose[0].y - 10))  // Full nose height
+                },
+                wholeFace: {
+                    // Bounding box containing all facial landmarks
+                    x: Math.max(0, Math.min(...jawline.map(p => p.x))),
+                    y: Math.max(0, Math.min(...leftEyebrow.concat(rightEyebrow).map(p => p.y)) - 20),
+                    width: Math.min(videoWidth - Math.min(...jawline.map(p => p.x)), 
+                                  Math.max(...jawline.map(p => p.x)) - Math.min(...jawline.map(p => p.x))),
+                    height: Math.min(videoHeight - (Math.min(...leftEyebrow.concat(rightEyebrow).map(p => p.y)) - 20),
+                                   Math.max(...jawline.map(p => p.y)) - Math.min(...leftEyebrow.concat(rightEyebrow).map(p => p.y)) + 40)
                 }
             };
             
@@ -903,10 +933,11 @@ class HeartRateMonitor {
     
     getRegionWeights() {
         const weights = {
-            forehead: 0.25,
-            leftUnderEye: 0.25,
-            rightUnderEye: 0.25,
-            nose: 0.25
+            forehead: 0.2,
+            leftUnderEye: 0.2,
+            rightUnderEye: 0.2,
+            nose: 0.2,
+            wholeFace: 0.2
         };
         
         // Adjust weights based on signal quality
@@ -1576,7 +1607,7 @@ class HeartRateMonitor {
         if (times.length === 0) return;
         
         // Update each region's data
-        const regionNames = ['forehead', 'leftUnderEye', 'rightUnderEye', 'nose'];
+        const regionNames = ['forehead', 'leftUnderEye', 'rightUnderEye', 'nose', 'wholeFace'];
         regionNames.forEach((region, index) => {
             const data = times.map(time => {
                 const point = this.regionConsensusHistory[region].find(p => p.time === time);
@@ -1590,7 +1621,7 @@ class HeartRateMonitor {
             const point = this.fullHistory.find(p => p.time === time);
             return point ? point.heartRate : null;
         });
-        this.regionConsensusChart.data.datasets[4].data = overallData;
+        this.regionConsensusChart.data.datasets[5].data = overallData;
         
         // Update labels
         this.regionConsensusChart.data.labels = times;
@@ -1757,7 +1788,7 @@ class HeartRateMonitor {
         });
         
         // Calculate region signal quality
-        ['forehead', 'leftUnderEye', 'rightUnderEye', 'nose'].forEach(region => {
+        ['forehead', 'leftUnderEye', 'rightUnderEye', 'nose', 'wholeFace'].forEach(region => {
             const buffer = this.regionBuffers[region];
             if (buffer.length > 20) {
                 const values = buffer.slice(-20).map(b => b.value);
