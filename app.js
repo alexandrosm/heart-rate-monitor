@@ -54,6 +54,12 @@ class HeartRateMonitor {
                 PeakDetection: [],
                 Autocorrelation: [],
                 Wavelet: []
+            },
+            nose: {
+                FFT: [],
+                PeakDetection: [],
+                Autocorrelation: [],
+                Wavelet: []
             }
         };
         this.chart = null;
@@ -69,7 +75,8 @@ class HeartRateMonitor {
             forehead: [],
             leftUnderEye: [],
             rightUnderEye: [],
-            noseBridge: []
+            noseBridge: [],
+            nose: []
         };
         
         // Performance tracking
@@ -78,13 +85,15 @@ class HeartRateMonitor {
             forehead: { FFT: [], PeakDetection: [], Autocorrelation: [], Wavelet: [] },
             leftUnderEye: { FFT: [], PeakDetection: [], Autocorrelation: [], Wavelet: [] },
             rightUnderEye: { FFT: [], PeakDetection: [], Autocorrelation: [], Wavelet: [] },
-            noseBridge: { FFT: [], PeakDetection: [], Autocorrelation: [], Wavelet: [] }
+            noseBridge: { FFT: [], PeakDetection: [], Autocorrelation: [], Wavelet: [] },
+            nose: { FFT: [], PeakDetection: [], Autocorrelation: [], Wavelet: [] }
         };
         this.regionSignalQuality = {
             forehead: { snr: 0, stability: 0 },
             leftUnderEye: { snr: 0, stability: 0 },
             rightUnderEye: { snr: 0, stability: 0 },
-            noseBridge: { snr: 0, stability: 0 }
+            noseBridge: { snr: 0, stability: 0 },
+            nose: { snr: 0, stability: 0 }
         };
         
         // Face detection stability
@@ -108,13 +117,15 @@ class HeartRateMonitor {
             forehead: [],
             leftUnderEye: [],
             rightUnderEye: [],
-            noseBridge: []
+            noseBridge: [],
+            nose: []
         };
         this.regionColors = {
             forehead: '#00ff00',
             leftUnderEye: '#ff00ff',
             rightUnderEye: '#00ffff',
-            noseBridge: '#ffff00'
+            noseBridge: '#ffff00',
+            nose: '#ff8800'
         };
         
         // Algorithm selection
@@ -329,6 +340,15 @@ class HeartRateMonitor {
                         pointRadius: 0
                     },
                     {
+                        label: 'Nose',
+                        data: [],
+                        borderColor: '#ff8800',
+                        backgroundColor: 'rgba(255, 136, 0, 0.1)',
+                        borderWidth: 2,
+                        tension: 0.1,
+                        pointRadius: 0
+                    },
+                    {
                         label: 'Overall Consensus',
                         data: [],
                         borderColor: '#9b59b6',
@@ -379,7 +399,7 @@ class HeartRateMonitor {
         
         // Initialize algorithm comparison charts for each region
         this.algorithmCharts = {};
-        const regions = ['all', 'forehead', 'leftUnderEye', 'rightUnderEye', 'noseBridge'];
+        const regions = ['all', 'forehead', 'leftUnderEye', 'rightUnderEye', 'noseBridge', 'nose'];
         
         regions.forEach(region => {
             const chartElement = document.getElementById(`algorithmChart_${region}`);
@@ -617,19 +637,25 @@ class HeartRateMonitor {
                     x: Math.max(0, leftEye[0].x - 5),
                     y: Math.max(0, Math.max(...leftEye.map(p => p.y)) + 5),
                     width: Math.min(videoWidth - (leftEye[0].x - 5), leftEye[3].x - leftEye[0].x + 10),
-                    height: Math.min(25, videoHeight - (Math.max(...leftEye.map(p => p.y)) + 5))
+                    height: Math.min(40, videoHeight - (Math.max(...leftEye.map(p => p.y)) + 5))  // Extended from 25 to 40
                 },
                 rightUnderEye: {
                     x: Math.max(0, rightEye[0].x - 5),
                     y: Math.max(0, Math.max(...rightEye.map(p => p.y)) + 5),
                     width: Math.min(videoWidth - (rightEye[0].x - 5), rightEye[3].x - rightEye[0].x + 10),
-                    height: Math.min(25, videoHeight - (Math.max(...rightEye.map(p => p.y)) + 5))
+                    height: Math.min(40, videoHeight - (Math.max(...rightEye.map(p => p.y)) + 5))  // Extended from 25 to 40
                 },
                 noseBridge: {
                     x: Math.max(0, nose[0].x - 15),
                     y: Math.max(0, nose[0].y - 10),
                     width: Math.min(30, videoWidth - (nose[0].x - 15)),
                     height: Math.min(25, videoHeight - (nose[0].y - 10))
+                },
+                nose: {
+                    x: Math.max(0, nose[nose.length - 1].x - 20),  // Last point is the tip
+                    y: Math.max(0, nose[nose.length - 1].y - 5),
+                    width: Math.min(40, videoWidth - (nose[nose.length - 1].x - 20)),
+                    height: Math.min(20, videoHeight - (nose[nose.length - 1].y - 5))
                 }
             };
             
@@ -902,10 +928,11 @@ class HeartRateMonitor {
     
     getRegionWeights() {
         const weights = {
-            forehead: 0.25,
-            leftUnderEye: 0.25,
-            rightUnderEye: 0.25,
-            noseBridge: 0.25
+            forehead: 0.2,
+            leftUnderEye: 0.2,
+            rightUnderEye: 0.2,
+            noseBridge: 0.2,
+            nose: 0.2
         };
         
         // Adjust weights based on signal quality
@@ -1575,7 +1602,7 @@ class HeartRateMonitor {
         if (times.length === 0) return;
         
         // Update each region's data
-        const regionNames = ['forehead', 'leftUnderEye', 'rightUnderEye', 'noseBridge'];
+        const regionNames = ['forehead', 'leftUnderEye', 'rightUnderEye', 'noseBridge', 'nose'];
         regionNames.forEach((region, index) => {
             const data = times.map(time => {
                 const point = this.regionConsensusHistory[region].find(p => p.time === time);
@@ -1589,7 +1616,7 @@ class HeartRateMonitor {
             const point = this.fullHistory.find(p => p.time === time);
             return point ? point.heartRate : null;
         });
-        this.regionConsensusChart.data.datasets[4].data = overallData;
+        this.regionConsensusChart.data.datasets[5].data = overallData;
         
         // Update labels
         this.regionConsensusChart.data.labels = times;
@@ -1756,7 +1783,7 @@ class HeartRateMonitor {
         });
         
         // Calculate region signal quality
-        ['forehead', 'leftUnderEye', 'rightUnderEye', 'noseBridge'].forEach(region => {
+        ['forehead', 'leftUnderEye', 'rightUnderEye', 'noseBridge', 'nose'].forEach(region => {
             const buffer = this.regionBuffers[region];
             if (buffer.length > 20) {
                 const values = buffer.slice(-20).map(b => b.value);
