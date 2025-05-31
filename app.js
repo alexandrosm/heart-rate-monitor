@@ -99,7 +99,7 @@ class HeartRateMonitor {
         // Face detection stability
         this.lastDetection = null;
         this.detectionMissCount = 0;
-        this.maxMissCount = 10; // Allow up to 10 frames without detection
+        this.maxMissCount = 3; // Only allow 3 frames without detection before clearing
         this.frameCount = 0;
         this.detectionInterval = 5; // Only detect face every 5 frames for performance
         
@@ -608,6 +608,11 @@ class HeartRateMonitor {
             detection = this.lastDetection;
         }
         
+        // If we've missed too many detections, clear the last detection
+        if (this.detectionMissCount >= this.maxMissCount) {
+            this.lastDetection = null;
+        }
+        
         // Only clear and redraw if we have a detection
         if (detection) {
             // Clear canvas only when drawing
@@ -735,6 +740,15 @@ class HeartRateMonitor {
             // Update status when face is detected
             this.status.textContent = 'Face detected. Measuring heart rate...';
             
+            // Draw face detection indicator
+            this.ctx.fillStyle = 'rgba(0, 255, 0, 0.8)';
+            this.ctx.beginPath();
+            this.ctx.arc(30, 30, 10, 0, 2 * Math.PI);
+            this.ctx.fill();
+            this.ctx.fillStyle = '#00ff00';
+            this.ctx.font = '12px Arial';
+            this.ctx.fillText('FACE DETECTED', 50, 35);
+            
             // Calculate heart rate if we have enough data
             if (this.frameBuffer.length >= this.bufferSize / 2) {
                 const rates = this.calculateMultiRegionVitalSigns();
@@ -794,6 +808,27 @@ class HeartRateMonitor {
             // Clear canvas when no face detected
             this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
             this.status.textContent = 'No face detected. Please position your face in the camera view.';
+            
+            // IMPORTANT: Clear buffers and stop processing when no face
+            this.frameBuffer = [];
+            Object.keys(this.regionBuffers).forEach(region => {
+                this.regionBuffers[region] = [];
+            });
+            
+            // Reset heart rate display
+            this.currentHeartRate = 0;
+            this.currentBreathingRate = 0;
+            this.heartRateDisplay.textContent = '--';
+            document.getElementById('breathingRate').textContent = '--';
+            
+            // Draw a large warning on the video
+            this.ctx.fillStyle = 'rgba(255, 0, 0, 0.8)';
+            this.ctx.font = 'bold 24px Arial';
+            this.ctx.textAlign = 'center';
+            this.ctx.fillText('NO FACE DETECTED', this.canvas.width / 2, this.canvas.height / 2);
+            this.ctx.font = '16px Arial';
+            this.ctx.fillText('Position your face in the camera', this.canvas.width / 2, this.canvas.height / 2 + 30);
+            this.ctx.textAlign = 'left';
         }
         
         // Continue processing with throttling
